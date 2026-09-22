@@ -1,0 +1,71 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          cat ci-src/part-* > /tmp/vedurspa-source.zip
+          echo "dccbb8a68cae3443447bbe488e3ac1f8bf96dafce274b0020b1c8e8b3d51a563  /tmp/vedurspa-source.zip" | sha256sum -c -
+          mkdir -p app
+          unzip -q /tmp/vedurspa-source.zip -d app
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm install --no-audit --no-fund
+
+      - name: Check web app
+        working-directory: app
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Generate Android project
+        working-directory: app
+        run: |
+          npx cap add android
+          npx cap sync android
+          python3 ci/patch_android.py
+          chmod +x android/gradlew
+
+      - name: Build signed debug APK
+        working-directory: app/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK
+        working-directory: app
+        shell: bash
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -F "27:3B:70:9D:3E:D9:A5:37:6D:9D:1F:14:81:1C:7D:1A:13:C5:2A:04:D4:26:6B:5A:7E:EB:9A:85:E9:E7:84:1D" /tmp/apksigner.txt
+          cp "$APK" Vedurspa-background-history.apk
+          sha256sum Vedurspa-background-history.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-background-history
+          path: app/Vedurspa-background-history.apk
+          if-no-files-found: error
