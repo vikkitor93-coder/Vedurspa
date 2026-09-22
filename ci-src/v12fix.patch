@@ -1,0 +1,11 @@
+diff -ruN a/native-src/is/viktor/vedurspa/history/HistoryWorker.java b/native-src/is/viktor/vedurspa/history/HistoryWorker.java
+--- a/native-src/is/viktor/vedurspa/history/HistoryWorker.java
++++ b/native-src/is/viktor/vedurspa/history/HistoryWorker.java
+@@ -54,6 +54,7 @@
+     private static final Pattern ASSIGNMENT = Pattern.compile("(?:[\\w$]+\\s*\\.\\s*)?imgConf\\s*\\[\\s*[\\\"']?\\d+[\\\"']?\\s*\\]\\s*=\\s*\\{", Pattern.CASE_INSENSITIVE);
+     private static final Pattern IMAGE_PAIR = Pattern.compile("(?:[\\\"'](\\d+)[\\\"']|\\b(\\d+))\\s*:\\s*((?:\\\"(?:\\\\.|[^\\\"\\\\])*\\\"|'(?:\\\\.|[^'\\\\])*'))");
+     private static final Pattern TAG_DATE = Pattern.compile("[\\\"']?tag(\\d+)[\\\"']?\\s*:\\s*new\\s+Date\\s*\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
++    private static final Pattern NEW_DATE = Pattern.compile("new\\s+Date\\s*\\(([^)]*)\\)", Pattern.CASE_INSENSITIVE);
+ 
+     public HistoryWorker(@NonNull Context context, @NonNull WorkerParameters params) {
+         super(context, params);
