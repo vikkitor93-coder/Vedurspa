@@ -16,6 +16,7 @@ jobs:
           curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/kort/' -o inspect/observations.html
           curl -L --fail --silent --show-error 'https://www.vedur.is/js/vi-base.js?v=538' -o inspect/vi-base.js
           curl -L --fail --silent --show-error 'https://www.vedur.is/js/vi-res_is.js?v=538' -o inspect/vi-res_is.js
+          curl -L --fail --silent --show-error 'https://www.vedur.is/wstations/wslinfo.js?v=538' -o inspect/wslinfo.js
           curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/vedurradar/' -o inspect/radar.html
           curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/vedurtungl/hitamyndir' -o inspect/satellite.html
       - uses: actions/upload-artifact@v4
