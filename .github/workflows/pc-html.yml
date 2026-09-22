@@ -1,0 +1,117 @@
+name: Build PC HTML Version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pc-html.yml'
+      - 'ci-src/pc-web.patch'
+      - 'ci/pc-server.go'
+      - 'ci-src/v13.patch.gz.b64'
+      - 'ci-src/v12.patch.gz.b64'
+      - 'ci-src/v12fix.patch'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct current Veðurspá source
+        shell: bash
+        run: |
+          cat ci-src/part-* > /tmp/vedurspa-source.zip
+          echo "dccbb8a68cae3443447bbe488e3ac1f8bf96dafce274b0020b1c8e8b3d51a563  /tmp/vedurspa-source.zip" | sha256sum -c -
+          mkdir -p app
+          unzip -q /tmp/vedurspa-source.zip -d app
+          base64 -d ci-src/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
+          patch -p1 -d app < /tmp/v12.patch
+          patch -p1 -d app < ci-src/v12fix.patch
+          base64 -d ci-src/v13.patch.gz.b64 | gunzip > /tmp/v13.patch
+          patch -p1 -d app < /tmp/v13.patch
+          patch -p1 -d app < ci-src/pc-web.patch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Install and test web app
+        working-directory: app
+        run: |
+          npm install --no-audit --no-fund
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Package Windows HTML app
+        shell: bash
+        run: |
+          mkdir -p package/web
+          cp -a app/dist/. package/web/
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o package/Vedurspa-PC.exe ci/pc-server.go
+          cat > 'package/Start Veðurspá.bat' <<'BAT'
+          @echo off
+          cd /d "%~dp0"
+          Vedurspa-PC.exe
+          BAT
+          cat > package/README.txt <<'TXT'
+          Veðurspá 1.3 - PC HTML version
+
+          START:
+          1. Extract the entire ZIP to a normal folder.
+          2. Double-click "Start Veðurspá.bat" (or Vedurspa-PC.exe).
+          3. Veðurspá opens automatically in your default browser.
+
+          The app itself is HTML/CSS/JavaScript in the "web" folder.
+          The small Vedurspa-PC.exe file only:
+          - serves those local web files on 127.0.0.1,
+          - forwards requests to vedur.is so browsers do not block them with CORS,
+          - opens the local page in your browser.
+
+          It does not expose the server to your network; it listens only on 127.0.0.1.
+          Close the launcher window to stop the local server.
+
+          HISTORY:
+          Historical data is stored by your browser locally (IndexedDB/Cache Storage).
+          Automatic PC collection runs while the local app/browser is open. Windows cannot
+          collect while the app is completely closed unless a scheduled/background service
+          is added later.
+
+          If Windows SmartScreen warns about the unsigned launcher, choose More info -> Run anyway.
+          The launcher is built from ci/pc-server.go in the supplied project.
+          TXT
+
+      - name: Smoke-test local HTML server and Veðurstofa proxy
+        shell: bash
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o package/Vedurspa-PC-linux-test ci/pc-server.go
+          (cd package && ./Vedurspa-PC-linux-test > /tmp/pc-server.log 2>&1 & echo $! > /tmp/pc-server.pid)
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8765/ -o /tmp/index.html; then break; fi
+            sleep 0.5
+          done
+          grep -F '<title>Veðurspá</title>' /tmp/index.html
+          curl -fsS --max-time 25 --get --data-urlencode 'url=https://www.vedur.is/vedur/spar/thattaspar'             http://127.0.0.1:8765/api/vedur -o /tmp/forecast.html
+          grep -E 'imgConf|thattaspar' /tmp/forecast.html | head -1
+          grep -F '/api/vedur' package/web/history-feature.js
+          kill $(cat /tmp/pc-server.pid) || true
+          rm -f package/Vedurspa-PC-linux-test
+
+      - name: Create ZIP
+        shell: bash
+        run: |
+          (cd package && zip -qr ../Vedurspa-PC-HTML-1.3.zip .)
+          sha256sum Vedurspa-PC-HTML-1.3.zip
+          ls -lh Vedurspa-PC-HTML-1.3.zip package/Vedurspa-PC.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-PC-HTML-1.3
+          path: Vedurspa-PC-HTML-1.3.zip
+          if-no-files-found: error
