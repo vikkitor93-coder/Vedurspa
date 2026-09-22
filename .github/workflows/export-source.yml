@@ -1,0 +1,27 @@
+name: Export Current Source
+on:
+  push:
+    paths:
+      - '.github/workflows/export-source.yml'
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current source
+        shell: bash
+        run: |
+          cat ci-src/part-* > /tmp/vedurspa-source.zip
+          mkdir -p app
+          unzip -q /tmp/vedurspa-source.zip -d app
+          base64 -d ci-src/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
+          patch -p1 -d app < /tmp/v12.patch
+          patch -p1 -d app < ci-src/v12fix.patch
+          base64 -d ci-src/v13.patch.gz.b64 | gunzip > /tmp/v13.patch
+          patch -p1 -d app < /tmp/v13.patch
+          (cd app && zip -qr ../Vedurspa-current-1.3-source.zip . -x 'node_modules/*')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-current-1.3-source
+          path: Vedurspa-current-1.3-source.zip
+          if-no-files-found: error
