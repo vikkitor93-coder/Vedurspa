@@ -21,6 +21,7 @@ jobs:
           unzip -q /tmp/vedurspa-source.zip -d app
           base64 -d ci-src/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
           patch -p1 -d app < /tmp/v12.patch
+          patch -p1 -d app < ci-src/v12fix.patch
 
       - uses: actions/setup-node@v4
         with:
