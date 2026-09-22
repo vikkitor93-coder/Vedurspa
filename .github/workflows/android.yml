@@ -22,6 +22,8 @@ jobs:
           base64 -d ci-src/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
           patch -p1 -d app < /tmp/v12.patch
           patch -p1 -d app < ci-src/v12fix.patch
+          base64 -d ci-src/v13.patch.gz.b64 | gunzip > /tmp/v13.patch
+          patch -p1 -d app < /tmp/v13.patch
 
       - uses: actions/setup-node@v4
         with:
@@ -66,12 +68,12 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='3' versionName='1.2'" /tmp/badging.txt
-          cp "$APK" Vedurspa-background-history.apk
-          sha256sum Vedurspa-background-history.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='4' versionName='1.3'" /tmp/badging.txt
+          cp "$APK" Vedurspa-compare-1.3.apk
+          sha256sum Vedurspa-compare-1.3.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-background-history
-          path: app/Vedurspa-background-history.apk
+          name: Vedurspa-compare-1.3
+          path: app/Vedurspa-compare-1.3.apk
           if-no-files-found: error
