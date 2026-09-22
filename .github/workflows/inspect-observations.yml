@@ -9,31 +9,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect observation and radar pages
+      - name: Inspect Vedur pages and scripts
         shell: bash
         run: |
-          set -u
-          curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/kort/' -o /tmp/obs.html
-          echo '=== OBS wmap / image refs ==='
-          grep -Eio '.{0,140}(wmap|athuganir|observ|gif|png).{0,180}' /tmp/obs.html | head -200 || true
-          echo '=== OBS scripts ==='
-          grep -Eo '<script[^>]+src=["'\'''][^"'\''']+["'\''']' /tmp/obs.html | head -100 || true
           python3 - <<'PY'
           import re, urllib.parse, urllib.request
-          html=open('/tmp/obs.html',encoding='utf-8',errors='replace').read()
-          srcs=re.findall(r'<script[^>]+src=["\\\']([^"\\\']+)',html,re.I)
-          for src in srcs:
-              u=urllib.parse.urljoin('https://www.vedur.is/vedur/athuganir/kort/',src)
+          pages=[
+            'https://www.vedur.is/vedur/athuganir/kort/',
+            'https://www.vedur.is/vedur/athuganir/vedurradar/',
+            'https://www.vedur.is/vedur/athuganir/vedurtungl/hitamyndir',
+            'http://brunnur.vedur.is/athuganir/athuganir.html',
+          ]
+          pat=re.compile(r'wmap|athugan|observ|radar|vedurradar|satell|vedurtungl|imgConf|slider|timestamp|date|dagur|klst|gif|png|jpg',re.I)
+          for page in pages:
+              print('\n######## PAGE',page,'########')
               try:
-                  text=urllib.request.urlopen(u,timeout=20).read().decode('utf-8','replace')
+                  html=urllib.request.urlopen(page,timeout=30).read().decode('utf-8','replace')
               except Exception as e:
-                  print('FETCH_FAIL',u,e); continue
-              hits=[]
-              for line in text.splitlines():
-                  if re.search(r'wmap|athugan|observ|radar|time|date|dagur|klst|gif|png',line,re.I): hits.append(line[:1200])
-              if hits:
-                  print('\n=== JS',u,'===')
-                  print('\n'.join(hits[:100]))
+                  print('PAGE_FAIL',e); continue
+              for line in html.splitlines():
+                  if pat.search(line):
+                      print(line[:1800])
+              srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I)
+              for src in srcs:
+                  url=urllib.parse.urljoin(page,src)
+                  try:
+                      txt=urllib.request.urlopen(url,timeout=20).read().decode('utf-8','replace')
+                  except Exception as e:
+                      print('SCRIPT_FAIL',url,e); continue
+                  hits=[line[:2200] for line in txt.splitlines() if pat.search(line)]
+                  if hits:
+                      print('\n--- SCRIPT',url,'---')
+                      print('\n'.join(hits[:160]))
           PY
-          echo '=== RADAR PAGE refs ==='
-          curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/radar/' | grep -Eio '.{0,140}(radar|gif|png|imgConf|Date).{0,180}' | head -200 || true
