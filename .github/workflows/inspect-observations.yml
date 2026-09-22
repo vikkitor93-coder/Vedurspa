@@ -9,18 +9,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download observation implementation
+      - name: Download comparison references
         shell: bash
         run: |
           mkdir inspect
           curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/kort/' -o inspect/observations.html
-          curl -L --fail --silent --show-error 'https://www.vedur.is/js/vi-base.js?v=538' -o inspect/vi-base.js
-          curl -L --fail --silent --show-error 'https://www.vedur.is/js/vi-res_is.js?v=538' -o inspect/vi-res_is.js
           curl -L --fail --silent --show-error 'https://www.vedur.is/wstations/wslinfo.js?v=538' -o inspect/wslinfo.js
           curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/vedurradar/' -o inspect/radar.html
-          curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/vedurtungl/hitamyndir' -o inspect/satellite.html
+          for t in 0700 0800 0900; do
+            url="https://www.vedur.is/photos/radar_isl/260922_${t}.png"
+            echo "CHECK ${url}"
+            if curl -L --fail --silent --show-error "${url}" -o "inspect/radar_260922_${t}.png"; then
+              file "inspect/radar_260922_${t}.png"
+              sha256sum "inspect/radar_260922_${t}.png"
+            else
+              echo "MISSING ${t}"
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: vedur-observation-inspection
+          name: vedur-comparison-reference
           path: inspect
           if-no-files-found: error
