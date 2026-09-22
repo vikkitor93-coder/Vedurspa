@@ -1,0 +1,28 @@
+--- a/src/utils/nativeNetwork.ts
++++ b/src/utils/nativeNetwork.ts
+@@ -16,7 +16,11 @@
+ async function request(url: string, binary: boolean): Promise<Response> {
+   url = checkedUrl(url);
+   if (!Capacitor.isNativePlatform()) {
+-    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
++    const localDesktop = typeof window !== 'undefined' &&
++      ['127.0.0.1', 'localhost'].includes(window.location.hostname) &&
++      /^https?:$/.test(window.location.protocol);
++    const requestUrl = localDesktop ? `/api/vedur?url=${encodeURIComponent(url)}` : url;
++    const res = await fetch(requestUrl, { signal: AbortSignal.timeout(20000) });
+     if (!res.ok) throw new Error(`Veðurstofa: HTTP ${res.status}`);
+     return res;
+   }
+--- a/public/history-feature.js
++++ b/public/history-feature.js
+@@ -871,7 +871,9 @@
+       const type = contentTypeEntry ? String(contentTypeEntry[1]) : 'image/gif';
+       return { blob: new Blob([bytes], { type }), fetchedAt: new Date().toISOString() };
+     }
+-    const res = await fetch(url, { signal: AbortSignal.timeout(25000) });
++    const localDesktop = ['127.0.0.1', 'localhost'].includes(window.location.hostname) && /^https?:$/.test(window.location.protocol);
++    const requestUrl = localDesktop ? `/api/vedur?url=${encodeURIComponent(url)}` : url;
++    const res = await fetch(requestUrl, { signal: AbortSignal.timeout(25000) });
+     if (!res.ok) throw new Error(`Veðurstofa: HTTP ${res.status}`);
+     return binary
+       ? { blob: await res.blob(), fetchedAt: new Date().toISOString() }
