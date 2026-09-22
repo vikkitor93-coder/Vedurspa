@@ -60,7 +60,10 @@ jobs:
           test -f "$APK"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
-          grep -F "27:3B:70:9D:3E:D9:A5:37:6D:9D:1F:14:81:1C:7D:1A:13:C5:2A:04:D4:26:6B:5A:7E:EB:9A:85:E9:E7:84:1D" /tmp/apksigner.txt
+          grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
+          grep -F "package: name='is.viktor.vedurspa' versionCode='2' versionName='1.1'" /tmp/badging.txt
           cp "$APK" Vedurspa-background-history.apk
           sha256sum Vedurspa-background-history.apk
 
