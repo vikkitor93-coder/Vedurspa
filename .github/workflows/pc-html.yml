@@ -98,7 +98,7 @@ jobs:
           done
           grep -F '<title>Veðurspá</title>' /tmp/index.html
           curl -fsS --max-time 25 --get --data-urlencode 'url=https://www.vedur.is/vedur/spar/thattaspar'             http://127.0.0.1:8765/api/vedur -o /tmp/forecast.html
-          grep -E 'imgConf|thattaspar' /tmp/forecast.html | head -1
+          grep -m1 -E 'imgConf|thattaspar' /tmp/forecast.html
           grep -F '/api/vedur' package/web/history-feature.js
           kill $(cat /tmp/pc-server.pid) || true
           rm -f package/Vedurspa-PC-linux-test
