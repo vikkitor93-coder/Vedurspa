@@ -1,0 +1,39 @@
+name: Inspect Vedur observation sources
+on:
+  push:
+    paths:
+      - '.github/workflows/inspect-observations.yml'
+      - 'ci-src/inspect-trigger.txt'
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect observation and radar pages
+        shell: bash
+        run: |
+          set -u
+          curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/kort/' -o /tmp/obs.html
+          echo '=== OBS wmap / image refs ==='
+          grep -Eio '.{0,140}(wmap|athuganir|observ|gif|png).{0,180}' /tmp/obs.html | head -200 || true
+          echo '=== OBS scripts ==='
+          grep -Eo '<script[^>]+src=["'\'''][^"'\''']+["'\''']' /tmp/obs.html | head -100 || true
+          python3 - <<'PY'
+          import re, urllib.parse, urllib.request
+          html=open('/tmp/obs.html',encoding='utf-8',errors='replace').read()
+          srcs=re.findall(r'<script[^>]+src=["\\\']([^"\\\']+)',html,re.I)
+          for src in srcs:
+              u=urllib.parse.urljoin('https://www.vedur.is/vedur/athuganir/kort/',src)
+              try:
+                  text=urllib.request.urlopen(u,timeout=20).read().decode('utf-8','replace')
+              except Exception as e:
+                  print('FETCH_FAIL',u,e); continue
+              hits=[]
+              for line in text.splitlines():
+                  if re.search(r'wmap|athugan|observ|radar|time|date|dagur|klst|gif|png',line,re.I): hits.append(line[:1200])
+              if hits:
+                  print('\n=== JS',u,'===')
+                  print('\n'.join(hits[:100]))
+          PY
+          echo '=== RADAR PAGE refs ==='
+          curl -L --fail --silent --show-error 'https://www.vedur.is/vedur/athuganir/radar/' | grep -Eio '.{0,140}(radar|gif|png|imgConf|Date).{0,180}' | head -200 || true
