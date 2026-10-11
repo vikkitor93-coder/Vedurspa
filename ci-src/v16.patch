@@ -1,0 +1,1109 @@
+diff -ruN vedur15base/BUILD_INFO.md vedur15src/BUILD_INFO.md
+--- a/BUILD_INFO.md	2026-10-11 23:28:47.000000000 +0000
++++ b/BUILD_INFO.md	2026-10-11 23:37:24.431650712 +0000
+@@ -1,27 +1,10 @@
+-# Veðurspá historical comparison build
++# Veðurspá 1.6
+ 
+-This source package builds versionCode 4 / versionName 1.3.
+-
+-Automatic Android history collection:
+-- 24 hours after a complete successful collection.
+-- If any forecast or actual-observation collection is failed/partial, retry in 1 hour.
+-- Continue hourly until complete, then return to the 24-hour schedule.
+-- Wi-Fi-only and retention settings are synchronized from the history UI.
+-- The schedule is restored after reboot, app replacement, or app launch.
+-
+-Historical comparison:
+-- Two always-accessible sliders choose the saved forecast run and the valid forecast time.
+-- Pinned Spá / Raun / Bera saman controls avoid scrolling to switch views.
+-- Compare mode supports stacked forecast-over-actual maps and a draggable reveal divider.
+-- The divider button cycles forecast / 50-50 / actual views.
+-- Actual precipitation first uses the long-term Veðurstofa Iceland RTR radar archive nearest the selected valid time (within 15 minutes). The radar precipitation pixels are isolated, recoloured to the forecast precipitation scale, and calibrated onto the same Iceland framing as the archived forecast map.
+-- If an archived radar frame is unavailable, precipitation falls back to a continuous measured field interpolated from Veðurstofa station totals on the same forecast-map reference, with station values available as detail points.
+-- Temperature, wind and cloud use measured station observations projected onto that same forecast-map reference, so the geography remains consistent between forecast and actual views.
+-- Native background collections archive the observation page and station metadata so station-based actual data remains available after it drops off the live observation page.
+-- Viewed radar images are cached locally by the history UI; the long-term public radar archive is used so old comparisons do not depend on the short-lived current-radar image directory.
+-
+-Version 1.3 changes:
+-- Replaced the sparse precipitation-dot comparison with archived RTR radar as the primary actual precipitation layer.
+-- Calibrated and recoloured radar precipitation onto the same forecast-map framing for useful stacked and draggable comparisons.
+-- Kept station interpolation as a fallback rather than the main rain comparison.
+-- Reduced empty map-card space and kept comparison controls pinned on screen.
++Changes:
++- Fixed Northern Lights cloud scoring: numeric Staðaspá cloud cover is primary; corrected green/white map sampling is fallback.
++- Best-in-night now evaluates real cloud forecasts for dark hours instead of synthetic estimates.
++- Staðaspá includes an interactive Iceland map/time slider and Besta veðrið clear+warm finder.
++- Warning screen includes an Iceland warning map with a time slider.
++- Top navigation and touch targets enlarged.
++- Test fixtures/tools are isolated behind hidden Developer Mode (tap version 7 times to enable).
++- Warning notifications remain free.
+diff -ruN vedur15base/ci/patch_android.py vedur15src/ci/patch_android.py
+--- a/ci/patch_android.py	2026-10-11 23:28:47.000000000 +0000
++++ b/ci/patch_android.py	2026-10-11 23:37:24.431650712 +0000
+@@ -4,7 +4,7 @@
+ import pathlib
+ 
+ p = pathlib.Path('android/app/build.gradle')
+ s = p.read_text()
+-s = s.replace('versionCode 1', 'versionCode 6').replace('versionName "1.0"', 'versionName "1.5"')
++s = s.replace('versionCode 1', 'versionCode 7').replace('versionName "1.0"', 'versionName "1.6"')
+ p.write_text(s)
+ 
+ p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+diff -ruN vedur15base/src/App.tsx vedur15src/src/App.tsx
+--- a/src/App.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/App.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -1,7 +1,7 @@
+ import { Geolocation } from "@capacitor/geolocation";
+ import { preloadImage } from "./utils/nativeNetwork";
+ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+-import { AppMode, ForecastData, ForecastFrame, UserLocation, AuroraLocationEvaluation, All4ForecastData } from "./types";
++import { AppMode, ForecastData, ForecastFrame, UserLocation, All4ForecastData } from "./types";
+ import { CompactHeader } from "./components/CompactHeader";
+ import { NorthernLightsBar } from "./components/NorthernLightsBar";
+ import { MapDisplay } from "./components/MapDisplay";
+@@ -9,8 +9,9 @@
+ import { TimelineSlider } from "./components/TimelineSlider";
+ import { HugeNavButtons } from "./components/HugeNavButtons";
+ import { PRESET_LOCATIONS, coordsToMapPercent } from "./utils/locationCoordinates";
+ import { sampleCloudCoverage } from "./utils/cloudSampler";
+-import { evaluateAuroraSpot, findBestDarknessFrame } from "./utils/auroraEvaluator";
++import { fetchStationForecastData, StationForecastData } from "./utils/stationForecast";
++import { estimateCloudAtLocation, findBestAuroraFrameFromStations } from "./utils/locationWeather";
+ 
+ import { OfflineIndicator } from "./components/OfflineIndicator";
+ import { StationForecastPanel } from "./components/StationForecastPanel";
+@@ -87,7 +88,8 @@
+   });
+   const [isLocating, setIsLocating] = useState<boolean>(false);
+   const [currentCloudCover, setCurrentCloudCover] = useState<number>(15);
+-  const [evaluation, setEvaluation] = useState<AuroraLocationEvaluation | null>(null);
++  const [cloudSourceLabel, setCloudSourceLabel] = useState<string>("staðaspá");
++  const [stationCloudData, setStationCloudData] = useState<StationForecastData | null>(null);
+ 
+   const activeImageRef = useRef<HTMLImageElement | null>(null);
+   const playTimerRef = useRef<NodeJS.Timeout | null>(null);
+@@ -259,6 +261,26 @@
+     await sendWarningTestNotification(level).catch(() => alert("Ekki tókst að senda próftilkynningu."));
+   }, []);
+ 
++  // Numeric cloud cover from Staðaspá is the primary source for aurora
++  // location scoring. It is far more reliable than inferring percentages from
++  // antialiased map pixels and uses the same official forecast dataset.
++  useEffect(() => {
++    if (forecastMode !== "nordurljos" || !userLocation || stationCloudData) return;
++    let cancelled = false;
++    fetchStationForecastData().then(result => { if (!cancelled) setStationCloudData(result); }).catch(() => {});
++    return () => { cancelled = true; };
++  }, [forecastMode, userLocation, stationCloudData]);
++
++  useEffect(() => {
++    if (!appSettings.developerMode) {
++      setDevWarningLevel("off");
++      setDevArticles(false);
++      setDeveloperOpen(false);
++    }
++  }, [appSettings.developerMode]);
++
+   // Preload upcoming frames in all4 mode for instant scrubbing
+   useEffect(() => {
+     if (forecastMode !== "all4" || !all4Data || currentIndex < 0) return;
+@@ -290,27 +312,36 @@
+     }
+   };
+ 
+-  // Live sampling of cloud cover when image or location changes
++  // Cloud cover at the chosen location. Prefer the numeric N cloud field from
++  // Staðaspá; only fall back to corrected pixel sampling if those values are not
++  // available.
+   const evaluateCurrentLocation = useCallback(() => {
+-    if (forecastMode !== "nordurljos" || !activeImageRef.current || !userLocation) return;
+-    const { xPercent, yPercent } = coordsToMapPercent(userLocation.lat, userLocation.lon);
+-    const cloud = sampleCloudCoverage(activeImageRef.current, xPercent, yPercent);
+-    setCurrentCloudCover(cloud);
+-
++    if (forecastMode !== "nordurljos" || !userLocation) return;
+     const currentF = data && data.frames.length > 0 ? data.frames[currentIndex] : null;
+-    if (currentF) {
+-      const evalResult = evaluateAuroraSpot(currentF, data?.aurora?.byDate, cloud);
+-      setEvaluation(evalResult);
++    if (!currentF) return;
++
++    const stationEstimate = estimateCloudAtLocation(stationCloudData, userLocation.lat, userLocation.lon, currentF.timestamp);
++    if (stationEstimate) {
++      setCurrentCloudCover(stationEstimate.percent);
++      setCloudSourceLabel(stationEstimate.sourceLabel);
++      return;
++    }
++
++    if (activeImageRef.current) {
++      const { xPercent, yPercent } = coordsToMapPercent(userLocation.lat, userLocation.lon);
++      const cloud = sampleCloudCoverage(activeImageRef.current, xPercent, yPercent);
++      setCurrentCloudCover(cloud);
++      setCloudSourceLabel("skýjakort · varaleið");
+     }
+-  }, [forecastMode, userLocation, data, currentIndex]);
++  }, [forecastMode, userLocation, data, currentIndex, stationCloudData]);
+ 
+   const handleImageLoaded = (img: HTMLImageElement) => {
+     activeImageRef.current = img;
+@@ -319,7 +350,7 @@
+ 
+   useEffect(() => {
+     evaluateCurrentLocation();
+-  }, [evaluateCurrentLocation, currentIndex, userLocation]);
++  }, [evaluateCurrentLocation, currentIndex, userLocation, stationCloudData]);
+ 
+   // Request GPS. Android often returns a coarse/cached first fix, so keep
+   // listening briefly and use the most accurate sample we receive.
+@@ -387,7 +418,6 @@
+   const handleDisableLocation = () => {
+     setUserLocation(null);
+     setCurrentCloudCover(15);
+-    setEvaluation(null);
+     try {
+       localStorage.setItem("vedurspa-location-enabled", "off");
+       localStorage.removeItem("vedurspa-location-preset");
+@@ -402,10 +432,11 @@
+     } catch {}
+   };
+ 
+-  // Find best time tonight (scans night frames for lowest cloud cover strictly during darkness)
+-  const bestTimeInfo = userLocation && data && data.frames.length > 0
+-    ? findBestDarknessFrame(data.frames, currentIndex, data.aurora?.byDate, currentCloudCover)
++  // Best time tonight is based on the real numeric cloud forecast at the
++  // selected location for each dark frame (plus the forecast aurora activity).
++  const bestTimeInfo = userLocation && data && data.frames.length > 0 && stationCloudData
++    ? findBestAuroraFrameFromStations(data.frames, currentIndex, data.aurora?.byDate, stationCloudData, userLocation.lat, userLocation.lon)
+     : null;
+ 
+   // Stepping logic (single frame / 1 hour step)
+@@ -529,7 +560,10 @@
+         forecastMode={forecastMode}
+         onToggleForecastMode={handleToggleForecastMode}
+         onRefresh={() => {
+           if (forecastMode === "stadaspa") setStationRefreshToken(v => v + 1);
+-          else void loadForecast(forecastMode, selectedCategory, true);
++          else {
++            if (forecastMode === "nordurljos") setStationCloudData(null);
++            void loadForecast(forecastMode, selectedCategory, true);
++          }
+         }}
+         onOpenSettings={() => setSettingsOpen(true)}
+         isRefreshing={isRefreshing}
+@@ -551,7 +585,7 @@
+       ) : (
+       <main id="main-forecast-stage" className="flex-1 flex flex-col justify-between px-1 sm:px-1.5 py-0.5 max-w-4xl mx-auto w-full min-h-0 overflow-hidden">
+         {forecastMode === "nordurljos" && (
+-          <NorthernLightsBar currentFrame={currentFrame} auroraData={data?.aurora} userLocation={userLocation} onSelectLocation={handleSelectLocation} onDisableLocation={handleDisableLocation} onRequestGps={handleRequestGps} isLocating={isLocating} cloudCoverPercent={currentCloudCover} bestTimeInfo={bestTimeInfo} onJumpToFrame={(idx) => { setCurrentIndex(idx); setIsPlaying(false); }} />
++          <NorthernLightsBar currentFrame={currentFrame} auroraData={data?.aurora} userLocation={userLocation} onSelectLocation={handleSelectLocation} onDisableLocation={handleDisableLocation} onRequestGps={handleRequestGps} isLocating={isLocating} cloudCoverPercent={currentCloudCover} cloudSourceLabel={cloudSourceLabel} bestTimeInfo={bestTimeInfo} onJumpToFrame={(idx) => { setCurrentIndex(idx); setIsPlaying(false); }} />
+         )}
+         <div className="w-full flex-1 min-h-0 flex items-center justify-center my-0.5 overflow-hidden">
+           {forecastMode === "all4" ? (
+diff -ruN vedur15base/src/components/AppSettingsPanel.tsx vedur15src/src/components/AppSettingsPanel.tsx
+--- a/src/components/AppSettingsPanel.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/components/AppSettingsPanel.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -1,4 +1,4 @@
+-import React from "react";
++import React, { useState } from "react";
+ import { AlertTriangle, BellRing, Bug, Settings, X } from "lucide-react";
+ import { AppSettings } from "../utils/appSettings";
+ import type { WarningLevel } from "../utils/warnings";
+@@ -18,6 +18,16 @@
+ }
+ 
+ export const AppSettingsPanel: React.FC<Props> = ({ settings, warningCount, hasLocation, onChange, onEnableNotifications, onOpenWarnings, onOpenDeveloper, onClose }) => {
++  const [versionTaps,setVersionTaps]=useState(0);
+   const setNotifications = (enabled: boolean) => {
+     onChange({ ...settings, warningNotifications: enabled });
+     if (enabled) onEnableNotifications();
+   };
++  const tapVersion=()=>{
++    if(settings.developerMode)return;
++    const next=versionTaps+1;
++    setVersionTaps(next);
++    if(next>=7){onChange({...settings,developerMode:true});setVersionTaps(0);}
++  };
+   return (
+     <div className="fixed inset-0 z-[90] bg-slate-950 text-slate-100 flex flex-col">
+-      <div className="h-14 px-3 border-b border-slate-800 flex items-center gap-2 shrink-0">
++      <div className="min-h-14 px-3 border-b border-slate-800 flex items-center gap-2 shrink-0">
+         <Settings className="w-5 h-5 text-blue-400" />
+         <h2 className="text-lg font-black flex-1">Stillingar</h2>
+-        <button onClick={onClose} className="p-2 rounded-lg border border-slate-700"><X className="w-5 h-5" /></button>
++        <button onClick={onClose} className="w-11 h-11 grid place-items-center rounded-xl border border-slate-700 bg-slate-900"><X className="w-5 h-5" /></button>
+       </div>
+       <div className="flex-1 overflow-y-auto p-3 max-w-2xl w-full mx-auto space-y-3">
+         <section className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+@@ -27,7 +37,7 @@
+               <div className="font-bold">Sýna veðurviðvaranir efst</div>
+               <div className="text-xs text-slate-400 mt-0.5">Litaborði birtist á aðalskjánum þegar virk viðvörun er í gildi.</div>
+             </div>
+-            <button role="switch" aria-checked={settings.showWarnings} onClick={() => onChange({ ...settings, showWarnings: !settings.showWarnings })} className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 ${settings.showWarnings ? "bg-blue-600" : "bg-slate-700"}`}>
+-              <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${settings.showWarnings ? "translate-x-5" : "translate-x-0"}`} />
++            <button role="switch" aria-checked={settings.showWarnings} onClick={() => onChange({ ...settings, showWarnings: !settings.showWarnings })} className={`w-14 h-8 rounded-full p-1 transition-colors shrink-0 ${settings.showWarnings ? "bg-blue-600" : "bg-slate-700"}`}><span className={`block w-6 h-6 rounded-full bg-white transition-transform ${settings.showWarnings ? "translate-x-6" : "translate-x-0"}`} />
+             </button>
+           </div>
+         </section>
+@@ -39,7 +49,7 @@
+               <div className="font-bold flex items-center gap-2"><BellRing className="w-4 h-4 text-yellow-300"/>Tilkynningar um veðurviðvaranir</div>
+               <div className="text-xs text-slate-400 mt-0.5">Bakgrunnsathugun á Android. Tilkynning er aðeins send þegar valinn staður er innan viðvörunarsvæðis.</div>
+             </div>
+-            <button role="switch" aria-checked={settings.warningNotifications} onClick={() => setNotifications(!settings.warningNotifications)} className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 ${settings.warningNotifications ? "bg-blue-600" : "bg-slate-700"}`}>
+-              <span className={`block w-5 h-5 rounded-full bg-white transition-transform ${settings.warningNotifications ? "translate-x-5" : "translate-x-0"}`} />
++            <button role="switch" aria-checked={settings.warningNotifications} onClick={() => setNotifications(!settings.warningNotifications)} className={`w-14 h-8 rounded-full p-1 transition-colors shrink-0 ${settings.warningNotifications ? "bg-blue-600" : "bg-slate-700"}`}><span className={`block w-6 h-6 rounded-full bg-white transition-transform ${settings.warningNotifications ? "translate-x-6" : "translate-x-0"}`} />
+             </button>
+           </div>
+           {!hasLocation && settings.warningNotifications && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">Veldu staðsetningu eða GPS svo appið viti hvaða viðvaranir eiga við þig.</div>}
+@@ -47,30 +57,26 @@
+             <div className="text-xs font-bold text-slate-300 mb-1">Lágmarksstig tilkynningar</div>
+             <div className="grid grid-cols-3 gap-2">
+               {([['yellow','Gul'],['orange','Appelsínugul'],['red','Rauð']] as Array<[WarningLevel,string]>).map(([level,label]) => (
+-                <button key={level} onClick={() => onChange({ ...settings, warningNotificationMinLevel: level })} className={`rounded-lg border px-2 py-2 text-xs font-black ${settings.warningNotificationMinLevel===level ? (level==='yellow'?'bg-yellow-400 text-slate-950 border-yellow-200':level==='orange'?'bg-orange-500 text-white border-orange-300':'bg-red-600 text-white border-red-300') : 'bg-slate-950 border-slate-700 text-slate-400'}`}>{label}</button>
++                <button key={level} onClick={() => onChange({ ...settings, warningNotificationMinLevel: level })} className={`min-h-11 rounded-xl border px-2 py-2 text-xs font-black ${settings.warningNotificationMinLevel===level ? (level==='yellow'?'bg-yellow-400 text-slate-950 border-yellow-200':level==='orange'?'bg-orange-500 text-white border-orange-300':'bg-red-600 text-white border-red-300') : 'bg-slate-950 border-slate-700 text-slate-400'}`}>{label}</button>
+               ))}
+             </div>
+           </div>
+         </section>
+ 
+-        <button onClick={onOpenWarnings} className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 flex items-center gap-3 text-left">
+-          <AlertTriangle className="w-5 h-5 text-yellow-400" />
+-          <div className="flex-1"><div className="font-bold">Viðvaranir og veðurfréttir</div><div className="text-xs text-slate-400">{warningCount ? `${warningCount} virk viðvörun${warningCount === 1 ? "" : "ar"}` : "Engar virkar viðvaranir"}</div></div>
+-          <span className="text-slate-500">›</span>
+-        </button>
++        <button onClick={onOpenWarnings} className="w-full min-h-14 rounded-xl border border-slate-700 bg-slate-900 p-3 flex items-center gap-3 text-left touch-manipulation"><AlertTriangle className="w-5 h-5 text-yellow-400" /><div className="flex-1"><div className="font-bold">Viðvaranir og veðurfréttir</div><div className="text-xs text-slate-400">{warningCount ? `${warningCount} virk viðvörun${warningCount === 1 ? "" : "ar"}` : "Engar virkar viðvaranir"}</div></div><span className="text-slate-500 text-xl">›</span></button>
+ 
+-        <section className="rounded-xl border border-fuchsia-900/50 bg-fuchsia-950/20 p-3">
+-          <div className="flex items-center justify-between gap-4">
+-            <div><div className="font-bold flex items-center gap-2"><Bug className="w-4 h-4 text-fuchsia-400"/>Þróunarhamur</div><div className="text-xs text-slate-400 mt-0.5">Prófa viðvörunarstig, veðurfréttir og Android-tilkynningar.</div></div>
+-            <button role="switch" aria-checked={settings.developerMode} onClick={() => onChange({ ...settings, developerMode: !settings.developerMode })} className={`w-12 h-7 rounded-full p-1 shrink-0 ${settings.developerMode?'bg-fuchsia-600':'bg-slate-700'}`}><span className={`block w-5 h-5 rounded-full bg-white transition-transform ${settings.developerMode?'translate-x-5':''}`}/></button>
+-          </div>
+-          {settings.developerMode && <button onClick={onOpenDeveloper} className="mt-3 w-full rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-sm font-black text-fuchsia-200">Opna prófunartæki</button>}
+-        </section>
++        {settings.developerMode && <section className="rounded-xl border border-fuchsia-900/50 bg-fuchsia-950/20 p-3">
++          <div className="font-bold flex items-center gap-2"><Bug className="w-4 h-4 text-fuchsia-400"/>Þróunarhamur virkur</div>
++          <div className="text-xs text-slate-400 mt-1">Prófunarviðvaranir, prófunarfréttir og próftilkynningar eru aðeins aðgengilegar hér inni.</div>
++          <div className="grid grid-cols-2 gap-2 mt-3">
++            <button onClick={onOpenDeveloper} className="min-h-11 rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-sm font-black text-fuchsia-200">Opna prófunartæki</button>
++            <button onClick={()=>onChange({...settings,developerMode:false})} className="min-h-11 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-300">Slökkva á dev</button>
++          </div>
++        </section>}
+ 
+-        <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400 leading-relaxed">
+-          Gögn: Veðurstofa Íslands. Viðvaranir, staðaspár og veðurfréttir eru sóttar beint frá vedur.is og geta verið sýndar úr geymslu ef nettenging bregst.
+-        </section>
++        <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 text-xs text-slate-400 leading-relaxed">Gögn: Veðurstofa Íslands. Viðvaranir, staðaspár og veðurfréttir eru sóttar beint frá vedur.is og geta verið sýndar úr geymslu ef nettenging bregst.</section>
++
++        <button onClick={tapVersion} className="w-full min-h-11 text-center text-[11px] text-slate-600 select-none">Veðurspá 1.6{settings.developerMode?' · DEV':''}</button>
+       </div>
+     </div>
+   );
+ };
+diff -ruN vedur15base/src/components/CompactHeader.tsx vedur15src/src/components/CompactHeader.tsx
+--- a/src/components/CompactHeader.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/components/CompactHeader.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -14,34 +14,42 @@
+   isRefreshing: boolean;
+ }
+ 
++const ModeButton:React.FC<{active:boolean;label:string;title:string;onClick:()=>void;children:React.ReactNode;activeClass:string}> = ({active,label,title,onClick,children,activeClass}) => (
++  <button onClick={onClick} title={title} className={`min-h-11 rounded-xl border px-1.5 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs font-black touch-manipulation active:scale-[0.97] transition-all ${active?`${activeClass} text-white border-white/30 shadow-md`:'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'}`}>
++    {children}<span className="leading-none whitespace-nowrap">{label}</span>
++  </button>
++);
++
+ export const CompactHeader: React.FC<CompactHeaderProps> = ({
+   currentFrame, currentIndex, totalFrames, categories, selectedCategory,
+   onSelectCategory, forecastMode, onToggleForecastMode, onRefresh, onOpenSettings, isRefreshing,
+ }) => {
+   const dateInfo = currentFrame ? formatForecastDate(currentFrame.timestamp) : null;
+   const isStation = forecastMode === "stadaspa";
+-  return (
+-    <header id="compact-top-header" className="w-full max-w-4xl mx-auto px-2 pt-1 pb-1 flex flex-col gap-1 border-b border-slate-800/80 select-none shrink-0">
+-      <div className="flex items-center justify-between gap-1.5 h-9 sm:h-10 min-w-0">
+-        <div className="flex items-center gap-2 min-w-0">
+-          {isStation ? (
+-            <>
+-              <MapPin className="w-5 h-5 text-blue-400 shrink-0" />
+-              <div className="min-w-0 leading-none"><div className="text-lg sm:text-xl font-black text-white">Staðaspá</div><div className="text-[10px] text-slate-500 mt-1">Veðurstofa Íslands</div></div>
+-            </>
+-          ) : (
+-            <>
+-              <span id="compact-time-readout" className="text-xl sm:text-2xl font-black tracking-tight text-white font-mono leading-none shrink-0">{dateInfo ? dateInfo.timeStr : "--:--"}</span>
+-              <div className="flex flex-col justify-center leading-none min-w-0">
+-                <div className="flex items-center gap-1.5 h-4.5 overflow-hidden"><span className="text-xs sm:text-sm font-bold text-slate-200 whitespace-nowrap">{dateInfo ? `${dateInfo.dayShort} ${dateInfo.dayOfMonth}. ${dateInfo.monthShort}` : "Sæki..."}</span>{dateInfo?.relativeDay ? <span className="px-1.5 rounded-md text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">{dateInfo.relativeDay}</span> : null}</div>
+-                <span className="text-[10px] font-mono text-slate-500 h-3 leading-none truncate mt-0.5">{currentFrame?.modelName || "Veðurstofa Íslands"}</span>
++  return (
++    <header id="compact-top-header" className="w-full max-w-4xl mx-auto px-2 pt-1 pb-1.5 flex flex-col gap-1.5 border-b border-slate-800/80 select-none shrink-0">
++      <div className="flex items-center justify-between gap-2 min-h-12 min-w-0">
++        <div className="flex items-center gap-2 min-w-0 flex-1">
++          {isStation ? <>
++            <MapPin className="w-6 h-6 text-cyan-400 shrink-0" />
++            <div className="min-w-0 leading-none"><div className="text-xl sm:text-2xl font-black text-white">Staðaspá</div><div className="text-[11px] text-slate-500 mt-1">Veðurstofa Íslands</div></div>
++          </> : <>
++            <span id="compact-time-readout" className="text-2xl sm:text-3xl font-black tracking-tight text-white font-mono leading-none shrink-0">{dateInfo ? dateInfo.timeStr : "--:--"}</span>
++            <div className="flex flex-col justify-center min-w-0">
++              <div className="flex items-center gap-1.5 overflow-hidden"><span className="text-sm font-bold text-slate-200 whitespace-nowrap">{dateInfo ? `${dateInfo.dayShort} ${dateInfo.dayOfMonth}. ${dateInfo.monthShort}` : "Sæki..."}</span>{dateInfo?.relativeDay ? <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">{dateInfo.relativeDay}</span> : null}</div>
++              <div className="flex items-center gap-2 mt-0.5"><span className="text-[10px] font-mono text-slate-500 truncate">{currentFrame?.modelName || "Veðurstofa Íslands"}</span>{!isStation&&<span id="compact-frame-counter" className="text-[10px] font-mono font-bold text-slate-300">{totalFrames>0?`${currentIndex+1}/${totalFrames}`:"0/0"}</span>}</div>
+               </div>
+-            </>
+-          )}
++          </>}
+         </div>
+-        <div className="flex items-center gap-1 shrink-0">
+-          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 shadow-inner">
+-            <button id="mode-btn-weather" onClick={()=>onToggleForecastMode("weather")} title="Veðurkort" className={`p-1 sm:px-2 rounded-md text-xs font-bold flex items-center gap-1 ${forecastMode==="weather"?"bg-blue-600 text-white":"text-slate-400"}`}><CloudRain className="w-3.5 h-3.5"/><span className="hidden sm:inline">Veður</span></button>
+-            <button id="mode-btn-aurora" onClick={()=>onToggleForecastMode("nordurljos")} title="Norðurljós" className={`p-1 sm:px-2 rounded-md text-xs font-bold flex items-center gap-1 ${forecastMode==="nordurljos"?"bg-emerald-600 text-white":"text-slate-400"}`}><Sparkles className="w-3.5 h-3.5"/><span className="hidden md:inline">Norðurljós</span></button>
+-            <button id="mode-btn-stadaspa" onClick={()=>onToggleForecastMode("stadaspa")} title="Staðaspá" className={`p-1 sm:px-2 rounded-md text-xs font-bold flex items-center gap-1 ${forecastMode==="stadaspa"?"bg-cyan-600 text-white":"text-slate-400"}`}><MapPin className="w-3.5 h-3.5"/><span className="hidden md:inline">Staðaspá</span></button>
+-            <button id="mode-btn-all4" onClick={()=>onToggleForecastMode("all4")} title="4-Kort" className={`p-1 sm:px-2 rounded-md text-xs font-bold flex items-center gap-1 ${forecastMode==="all4"?"bg-indigo-600 text-white":"text-slate-400"}`}><LayoutGrid className="w-3.5 h-3.5"/><span className="hidden md:inline">4-Kort</span></button>
+-          </div>
+-          {!isStation && <div id="compact-frame-counter" className="hidden xs:block text-[10px] sm:text-xs font-mono font-bold text-slate-300 bg-slate-900/90 border border-slate-800 px-1.5 py-1 rounded-lg">{totalFrames>0?`${currentIndex+1}/${totalFrames}`:"0/0"}</div>}
+-          <button id="btn-compact-refresh" onClick={onRefresh} disabled={isRefreshing} title="Endurnýja" className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 active:scale-90 disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${isRefreshing?"animate-spin text-blue-400":""}`}/></button>
+-          <button id="btn-app-settings" onClick={onOpenSettings} title="Stillingar" className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 active:scale-90"><Settings className="w-3.5 h-3.5"/></button>
++        <div className="flex items-center gap-1.5 shrink-0">
++          <button id="btn-compact-refresh" onClick={onRefresh} disabled={isRefreshing} title="Endurnýja" className="w-11 h-11 grid place-items-center rounded-xl bg-slate-900 border border-slate-700 text-slate-300 active:scale-90 disabled:opacity-50 touch-manipulation"><RefreshCw className={`w-5 h-5 ${isRefreshing?"animate-spin text-blue-400":""}`}/></button>
++          <button id="btn-app-settings" onClick={onOpenSettings} title="Stillingar" className="w-11 h-11 grid place-items-center rounded-xl bg-slate-900 border border-slate-700 text-slate-300 active:scale-90 touch-manipulation"><Settings className="w-5 h-5"/></button>
+         </div>
+       </div>
+-      {isStation ? (
+-        <div className="text-[10px] sm:text-xs text-slate-400 bg-slate-900/60 border border-slate-800 rounded-md px-2 py-1">Staðbundin spá · leitaðu að veðurstöð eða veldu næstu stöð</div>
+-      ) : <div className="flex items-center w-full py-0.5">
+-        {forecastMode === "all4" ? <div className="flex items-center justify-between gap-1 w-full text-[10px] sm:text-xs font-bold text-slate-300 bg-slate-900/60 border border-slate-800/80 rounded-md px-2 py-0.5"><span className="text-blue-400">● Úrkoma</span><span className="text-amber-400">● Hiti</span><span className="text-cyan-400">● Vindur</span><span className="text-emerald-400">● Öll ský</span></div> :
+-        <div className="flex items-center gap-1 w-full justify-between">{categories.map(cat=>{const isSelected=selectedCategory===cat.id;let displayTitle=cat.title.replace("spá","").trim();if(cat.id==="skyjahula")displayTitle="Lág/mið";if(cat.id==="samsett")displayTitle="Öll ský";return <button key={cat.id} id={`cat-btn-${cat.id}`} onClick={()=>onSelectCategory(cat.id)} title={cat.title} className={`flex-1 justify-center px-1 sm:px-2 py-1 rounded-md text-[11px] sm:text-xs font-bold whitespace-nowrap flex items-center gap-1 border ${isSelected?(forecastMode==="nordurljos"?"bg-emerald-600/90 border-emerald-400 text-white":"bg-blue-600/90 border-blue-400 text-white"):"bg-slate-900/80 border-slate-800 text-slate-400"}`}>{cat.id==="urkoma"&&<CloudRain className="w-3 h-3"/>}{cat.id==="vindur"&&<Wind className="w-3 h-3"/>}{cat.id==="hiti"&&<Thermometer className="w-3 h-3"/>}<span className="truncate">{displayTitle}</span></button>})}</div>}
+-      </div>}
++
++      <div className="grid grid-cols-4 gap-1.5 w-full">
++        <ModeButton active={forecastMode==="weather"} label="Veður" title="Veðurkort" onClick={()=>onToggleForecastMode("weather")} activeClass="bg-blue-600 border-blue-400"><CloudRain className="w-4 h-4"/></ModeButton>
++        <ModeButton active={forecastMode==="nordurljos"} label="Norðurljós" title="Norðurljós" onClick={()=>onToggleForecastMode("nordurljos")} activeClass="bg-emerald-600 border-emerald-400"><Sparkles className="w-4 h-4"/></ModeButton>
++        <ModeButton active={forecastMode==="stadaspa"} label="Staðaspá" title="Staðaspá" onClick={()=>onToggleForecastMode("stadaspa")} activeClass="bg-cyan-600 border-cyan-400"><MapPin className="w-4 h-4"/></ModeButton>
++        <ModeButton active={forecastMode==="all4"} label="4-Kort" title="4-Kort" onClick={()=>onToggleForecastMode("all4")} activeClass="bg-indigo-600 border-indigo-400"><LayoutGrid className="w-4 h-4"/></ModeButton>
++      </div>
++
++      {!isStation && <div className="w-full">
++        {forecastMode === "all4" ? <div className="min-h-10 grid grid-cols-4 items-center gap-1 w-full text-[10px] sm:text-xs font-bold text-slate-300 bg-slate-900/60 border border-slate-800/80 rounded-xl px-2"><span className="text-blue-400 text-center">● Úrkoma</span><span className="text-amber-400 text-center">● Hiti</span><span className="text-cyan-400 text-center">● Vindur</span><span className="text-emerald-400 text-center">● Öll ský</span></div> :
++        <div className={`grid gap-1.5 w-full ${forecastMode==="nordurljos"?'grid-cols-5':'grid-cols-3'}`}>{categories.map(cat=>{const isSelected=selectedCategory===cat.id;let displayTitle=cat.title.replace("spá","").trim();if(cat.id==="skyjahula")displayTitle="Lág/mið";if(cat.id==="samsett")displayTitle="Öll ský";return <button key={cat.id} id={`cat-btn-${cat.id}`} onClick={()=>onSelectCategory(cat.id)} title={cat.title} className={`min-h-10 px-1 sm:px-2 rounded-xl text-[10px] sm:text-xs font-black whitespace-nowrap flex items-center justify-center gap-1 border touch-manipulation active:scale-[0.98] ${isSelected?(forecastMode==="nordurljos"?"bg-emerald-600/90 border-emerald-400 text-white":"bg-blue-600/90 border-blue-400 text-white"):"bg-slate-900/80 border-slate-800 text-slate-400"}`}>{cat.id==="urkoma"&&<CloudRain className="w-3.5 h-3.5"/>}{cat.id==="vindur"&&<Wind className="w-3.5 h-3.5"/>}{cat.id==="hiti"&&<Thermometer className="w-3.5 h-3.5"/>}<span className="truncate">{displayTitle}</span></button>})}</div>}
++      </div>}
+     </header>
+   );
+ };
+diff -ruN vedur15base/src/components/NorthernLightsBar.tsx vedur15src/src/components/NorthernLightsBar.tsx
+--- a/src/components/NorthernLightsBar.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/components/NorthernLightsBar.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -13,6 +13,7 @@
+   onRequestGps: () => void;
+   isLocating: boolean;
+   cloudCoverPercent: number;
++  cloudSourceLabel?: string;
+   bestTimeInfo: {
+     frameIndex: number;
+     timeStr: string;
+@@ -33,6 +34,7 @@
+   onRequestGps,
+   isLocating,
+   cloudCoverPercent,
++  cloudSourceLabel,
+   bestTimeInfo,
+   onJumpToFrame,
+ }) => {
+@@ -75,7 +77,7 @@
+       <div className="bg-slate-900/95 border border-slate-800/90 rounded-xl px-2 py-1 shadow-md flex flex-col gap-1">
+         {/* Row 1 (Fixed height: h-6.5): Activity, Day/Night darkness status & Location */}
+-        <div className="flex items-center justify-between gap-1.5 h-6.5 min-w-0">
++        <div className="flex items-center justify-between gap-1.5 min-h-9 min-w-0">
+           {/* Left: Aurora Activity & Darkness/Daylight Status */}
+           <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+             {/* Activity badge */}
+@@ -117,7 +119,7 @@
+                 }}
+                 title="Slökkva á staðsetningu"
+                 aria-label="Slökkva á staðsetningu"
+-                className="p-1 rounded-md border bg-slate-800 border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/60 transition-all"
++                className="w-9 h-9 grid place-items-center rounded-lg border bg-slate-800 border-slate-700 text-slate-300 hover:text-rose-300 hover:border-rose-500/60 transition-all touch-manipulation"
+               >
+                 <X className="w-3 h-3" />
+               </button>
+@@ -129,7 +131,7 @@
+               onClick={onRequestGps}
+               disabled={isLocating}
+               title="Mín staðsetning (GPS)"
+-              className={`p-1 rounded-md border text-xs font-bold transition-all flex items-center gap-1 ${ 
++              className={`min-w-9 h-9 px-2 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1 touch-manipulation ${ 
+                 userLocation?.isGps
+                   ? "bg-blue-600 border-blue-400 text-white"
+                   : "bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
+@@ -144,7 +146,7 @@
+               id="btn-aurora-location-dropdown"
+               type="button"
+               onClick={() => setIsLocationMenuOpen(!isLocationMenuOpen)}
+-              className="px-2 py-1 rounded-md bg-slate-800/90 border border-slate-700 text-[11px] font-bold text-white flex items-center gap-1 hover:bg-slate-700 transition-all max-w-[130px] sm:max-w-[180px]"
++              className="min-h-9 px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-[11px] font-bold text-white flex items-center gap-1 hover:bg-slate-700 transition-all max-w-[145px] sm:max-w-[190px] touch-manipulation"
+             >
+               <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+               <span className="truncate">{userLocation ? userLocation.name : "Staðsetning af"}</span>
+@@ -200,7 +202,7 @@
+         </div>
+ 
+         {/* Row 2 (Fixed height: h-6): Cloud coverage condition & "Best í nótt" button */}
+-        <div className="flex items-center justify-between gap-1.5 h-6 pt-0.5 border-t border-slate-800/70 text-[11px] min-w-0">
++        <div className="flex items-center justify-between gap-1.5 min-h-8 py-0.5 border-t border-slate-800/70 text-[11px] min-w-0">
+           {/* Left: Cloud Condition at current spot (Strictly single line, zero height shift) */}
+           <div className="flex items-center gap-1.5 min-w-0 overflow-hidden text-slate-300">
+             {userLocation ? (
+@@ -216,7 +218,7 @@
+                 />
+                 <span className="font-bold text-white whitespace-nowrap">{cloudCoverPercent}% skýjahula</span>
+                 <span className="text-slate-400 truncate hidden xs:inline">
+-                  · {cloudCoverPercent <= 20 ? "Heiðskírt / Gott skyggni" : cloudCoverPercent <= 45 ? "Hálfskýjað" : "Skýjað"}
++                  · {cloudCoverPercent <= 20 ? "Heiðskírt / Gott skyggni" : cloudCoverPercent <= 45 ? "Hálfskýjað" : "Skýjað"}{cloudSourceLabel ? ` · ${cloudSourceLabel}` : ""}
+                   {userLocation.isGps && userLocation.accuracy ? ` · GPS ±${userLocation.accuracy} m` : ""}
+                 </span>
+               </>
+diff -ruN vedur15base/src/components/StationForecastPanel.tsx vedur15src/src/components/StationForecastPanel.tsx
+--- a/src/components/StationForecastPanel.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/components/StationForecastPanel.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -1,14 +1,16 @@
+ import React, { useEffect, useMemo, useState } from "react";
+-import { LocateFixed, Search, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
++import { LocateFixed, Search, RefreshCw, ChevronDown, ChevronUp, Sparkles, MapPinned, ChevronLeft, ChevronRight } from "lucide-react";
+ import { UserLocation } from "../types";
+ import { fetchStationForecastData, StationForecastData, StationForecastStation, WEATHER_TEXT, weatherEmoji, windDirectionText } from "../utils/stationForecast";
++import { closestHour, cloudForStationHour, distanceKm, findBestWeatherStation, BestWeatherResult } from "../utils/locationWeather";
++import { coordsToWmapPercent } from "../utils/locationCoordinates";
++import { ForecastImage } from "./ForecastImage";
+ 
+ interface Props { userLocation: UserLocation | null; refreshToken: number; }
+ 
+-function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+-  const R = 6371, toRad = (v:number) => v * Math.PI / 180;
+-  const dLat = toRad(bLat-aLat), dLon = toRad(bLon-aLon);
+-  const q = Math.sin(dLat/2)**2 + Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+-  return 2*R*Math.atan2(Math.sqrt(q), Math.sqrt(1-q));
+-}
+ function fmtTime(ts:string):string { return new Date(ts).toLocaleString("is-IS", { timeZone:"Atlantic/Reykjavik", weekday:"short", day:"numeric", month:"short", hour:"2-digit" }); }
+ function fmtUpdated(ts:string):string { return new Date(ts).toLocaleString("is-IS", { timeZone:"Atlantic/Reykjavik", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }); }
++function fmtMapTime(ts:string):string { return new Date(ts).toLocaleString("is-IS", { timeZone:"Atlantic/Reykjavik", weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }); }
++
++const BASE_MAP = "https://www.vedur.is/wmap/wmap_isl.gif";
+ 
+ export const StationForecastPanel: React.FC<Props> = ({ userLocation, refreshToken }) => {
+   const [data,setData]=useState<StationForecastData|null>(null);
+@@ -20,19 +22,30 @@
+   const [query,setQuery]=useState("");
+   const [selectedId,setSelectedId]=useState(()=>{ try{return localStorage.getItem("vedurspa-station-id")||"1";}catch{return "1";} });
+   const [showText,setShowText]=useState(true);
++  const [mapTimeIndex,setMapTimeIndex]=useState(0);
++  const [bestResult,setBestResult]=useState<BestWeatherResult|null>(null);
+ 
+   useEffect(()=>{
+     let dead=false;
+     setLoading(true); setError(null);
+-    fetchStationForecastData().then(v=>{ if(!dead){setData(v);setLoading(false);} }).catch(e=>{ if(!dead){setError(e?.message||"Gat ekki sótt staðaspá");setLoading(false);} });
++    fetchStationForecastData().then(v=>{
++      if(dead) return;
++      setData(v); setLoading(false);
++      const times=v.stations.find(s=>s.hours.length)?.hours.map(h=>h.timestamp)||[];
++      if(times.length){
++        const now=Date.now(); let best=0, diff=Infinity;
++        times.forEach((t,i)=>{const d=Math.abs(Date.parse(t)-now); if(d<diff){diff=d;best=i;}});
++        setMapTimeIndex(best);
++      }
++    }).catch(e=>{ if(!dead){setError(e?.message||"Gat ekki sótt staðaspá");setLoading(false);} });
+     return()=>{dead=true;};
+   },[refreshToken]);
+ 
+   const selected = useMemo(()=> data?.stations.find(s=>s.id===selectedId) || data?.stations.find(s=>s.id==="1") || data?.stations[0] || null,[data,selectedId]);
+-  const matches = useMemo(()=>{ const q=query.trim().toLocaleLowerCase("is"); if(!q||!data)return []; return data.stations.filter(s=>s.name.toLocaleLowerCase("is").includes(q)).slice(0,8); },[query,data]);
++  const matches = useMemo(()=>{ const q=query.trim().toLocaleLowerCase("is"); if(!q||!data)return []; return data.stations.filter(s=>s.name.toLocaleLowerCase("is").includes(q)).slice(0,10); },[query,data]);
++  const mapTimes = useMemo(()=>data?.stations.find(s=>s.hours.length)?.hours.map(h=>h.timestamp)||[],[data]);
++  const mapTimestamp = mapTimes[Math.min(mapTimeIndex,Math.max(0,mapTimes.length-1))] || data?.now || new Date().toISOString();
+ 
+   const choose=(s:StationForecastStation)=>{setSelectedId(s.id);setQuery("");try{localStorage.setItem("vedurspa-station-id",s.id);}catch{}};
+-  const chooseNearest=()=>{ if(!userLocation||!data)return; let best=data.stations[0],bd=Infinity; for(const s of data.stations){const d=distanceKm(userLocation.lat,userLocation.lon,s.lat,s.lon);if(d<bd){best=s;bd=d;}} if(best)choose(best); };
++  const chooseNearest=()=>{ if(!userLocation||!data)return; let best=data.stations[0],bd=Infinity; for(const s of data.stations){const d=distanceKm(userLocation.lat,userLocation.lon,s.lat,s.lon);if(d<bd){best=s;bd=d;}} if(best)choose(best); };
++  const chooseBestWeather=()=>{ if(!data)return; const best=findBestWeatherStation(data,mapTimestamp); setBestResult(best); if(best)choose(best.station); };
++
++  const mapStations = useMemo(()=>{
++    if(!data) return [];
++    return data.stations.flatMap(station=>{
++      const match=closestHour(station,mapTimestamp); if(!match||match.diffMs>4*60*60*1000)return [];
++      if(match.hour.temperature==null && match.hour.weatherCode==null) return [];
++      const pos=coordsToWmapPercent(station.lat,station.lon);
++      return [{station,hour:match.hour,pos,cloud:cloudForStationHour(match.hour)}];
++    });
++  },[data,mapTimestamp]);
+ 
+   const futureHours = useMemo(()=>{
+     if(!selected)return [];
+@@ -50,19 +63,29 @@
+ 
+   if(loading&&!data) return <div className="flex-1 grid place-items-center text-slate-400"><div className="text-center"><RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2"/>Sæki staðaspá…</div></div>;
+-  return <div id="station-forecast-panel" className="flex-1 overflow-y-auto min-h-0 px-2 pb-4 max-w-4xl w-full mx-auto">
++  return <div id="station-forecast-panel" className="flex-1 overflow-y-auto min-h-0 px-2 pb-5 max-w-4xl w-full mx-auto">
+     {error && <div className="my-2 p-3 rounded-xl border border-red-500/40 bg-red-500/10 text-red-200 text-sm">{error}</div>}
+-    <div className="sticky top-0 z-20 bg-slate-950 pt-2 pb-2">
++    <div className="sticky top-0 z-30 bg-slate-950 pt-2 pb-2">
+       <div className="rounded-xl border border-slate-800 bg-slate-900 p-2.5">
+         <div className="flex items-center gap-2">
+           <div className="min-w-0 flex-1"><div className="text-[10px] uppercase font-bold tracking-wide text-blue-400">Staðaspá</div><div className="text-xl font-black truncate">{selected?.name || "Veldu veðurstöð"}</div></div>
+-          {userLocation && <button onClick={chooseNearest} className="px-2.5 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-200 text-xs font-bold flex items-center gap-1"><LocateFixed className="w-4 h-4"/>Næsta stöð</button>}
++          {userLocation && <button onClick={chooseNearest} className="min-h-11 px-3 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-200 text-xs font-bold flex items-center gap-1.5 touch-manipulation"><LocateFixed className="w-4 h-4"/>Næsta stöð</button>}
+         </div>
+         <div className="relative mt-2">
+-          <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-500"/>
+-          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Leita að veðurstöð…" className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-2 text-sm outline-none focus:border-blue-500"/>
+-          {!!matches.length && <div className="absolute z-30 left-0 right-0 top-full mt-1 rounded-lg overflow-hidden border border-slate-700 bg-slate-900 shadow-xl">{matches.map(s=><button key={s.id} onClick={()=>choose(s)} className="w-full px-3 py-2 text-left text-sm hover:bg-slate-800 border-b border-slate-800 last:border-0">{s.name}</button>)}</div>}
++          <Search className="absolute left-3 top-3.5 w-4 h-4 text-slate-500"/>
++          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Leita að veðurstöð…" className="w-full min-h-11 bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:border-blue-500"/>
++          {!!matches.length && <div className="absolute z-40 left-0 right-0 top-full mt-1 rounded-xl overflow-hidden border border-slate-700 bg-slate-900 shadow-xl">{matches.map(s=><button key={s.id} onClick={()=>choose(s)} className="w-full min-h-11 px-3 py-2 text-left text-sm hover:bg-slate-800 border-b border-slate-800 last:border-0">{s.name}</button>)}</div>}
+         </div>
+         {data && <div className="text-[10px] text-slate-500 mt-1.5">{data.isCached?"Geymd gögn · ":""}Sótt {fmtUpdated(data.fetchedAt)}</div>}
+       </div>
+     </div>
+ 
++    {data && mapTimes.length>0 && <section className="mt-1 rounded-2xl border border-slate-800 bg-slate-900/70 p-2.5">
++      <div className="flex items-center gap-2 mb-2">
++        <MapPinned className="w-5 h-5 text-cyan-300 shrink-0"/>
++        <div className="min-w-0 flex-1"><div className="text-sm font-black">Spákort</div><div className="text-[11px] text-slate-400 truncate">{fmtMapTime(mapTimestamp)}</div></div>
++        <button onClick={chooseBestWeather} className="min-h-11 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-950/30 touch-manipulation"><Sparkles className="w-4 h-4"/>Besta veðrið</button>
++      </div>
++      {bestResult && <button onClick={()=>choose(bestResult.station)} className="w-full mb-2 min-h-10 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-left text-xs text-emerald-100"><b>{bestResult.station.name}</b> · {Math.round(bestResult.temperature)}°C · {bestResult.cloudPercent}% ský · besta samsetning heiðskíru og hita</button>}
++      <div className="relative w-full aspect-[540/390] overflow-hidden rounded-xl border border-slate-700 bg-white">
++        <ForecastImage src={BASE_MAP} alt="Staðaspákort Íslands" className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none" draggable={false}/>
++        {mapStations.map(({station,hour,pos,cloud})=>{
++          const active=station.id===selected?.id;
++          const temp=hour.temperature==null?'—':`${Math.round(hour.temperature)}°`;
++          return <button key={station.id} onClick={()=>choose(station)} title={`${station.name}: ${temp}, ${cloud==null?'?':Math.round(cloud)}% ský`} className={`absolute -translate-x-1/2 -translate-y-1/2 min-w-8 min-h-8 sm:min-w-10 sm:min-h-9 px-1 rounded-full sm:rounded-lg border shadow-md flex items-center justify-center gap-0.5 text-[9px] sm:text-[10px] font-black touch-manipulation ${active?'z-20 bg-blue-600 text-white border-white ring-2 ring-blue-300':'z-10 bg-slate-950/85 text-white border-slate-500/70 hover:bg-slate-800'}`} style={{left:`${pos.xPercent}%`,top:`${pos.yPercent}%`}}>
++            <span className="hidden sm:inline">{weatherEmoji(hour.weatherCode)}</span><span>{temp}</span>
++          </button>;
++        })}
++      </div>
++      <div className="mt-2 flex items-center gap-2">
++        <button onClick={()=>setMapTimeIndex(i=>Math.max(0,i-1))} disabled={mapTimeIndex<=0} className="w-11 h-11 grid place-items-center rounded-xl border border-slate-700 bg-slate-950 disabled:opacity-30"><ChevronLeft className="w-5 h-5"/></button>
++        <input aria-label="Tími staðaspákorts" type="range" min={0} max={Math.max(0,mapTimes.length-1)} value={Math.min(mapTimeIndex,mapTimes.length-1)} onChange={e=>{setMapTimeIndex(Number(e.target.value));setBestResult(null);}} className="flex-1 h-8 accent-cyan-500"/>
++        <button onClick={()=>setMapTimeIndex(i=>Math.min(mapTimes.length-1,i+1))} disabled={mapTimeIndex>=mapTimes.length-1} className="w-11 h-11 grid place-items-center rounded-xl border border-slate-700 bg-slate-950 disabled:opacity-30"><ChevronRight className="w-5 h-5"/></button>
++      </div>
++    </section>}
++
+     {selected && <>
+-      <section className="mt-1">
++      <section className="mt-3">
+         <h3 className="text-xs uppercase tracking-wide text-slate-400 font-bold mb-1.5">Næstu klukkustundir</h3>
+         <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
+           {futureHours.map(h=><div key={h.timestamp} className="snap-start min-w-[116px] rounded-xl border border-slate-800 bg-slate-900/80 p-2.5">
+@@ -82,7 +105,7 @@
+     </>}
+ 
+     {!!data?.textForecasts.length && <section className="mt-3 rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden">
+-      <button onClick={()=>setShowText(v=>!v)} className="w-full flex items-center px-3 py-3 text-left"><div className="flex-1 font-black">Textaspá Veðurstofu</div>{showText?<ChevronUp className="w-4 h-4"/>:<ChevronDown className="w-4 h-4"/>}</button>
++      <button onClick={()=>setShowText(v=>!v)} className="w-full min-h-12 flex items-center px-3 py-3 text-left"><div className="flex-1 font-black">Textaspá Veðurstofu</div>{showText?<ChevronUp className="w-4 h-4"/>:<ChevronDown className="w-4 h-4"/>}</button>
+       {showText && <div className="px-3 pb-3 space-y-3">{data.textForecasts.map((s,i)=><article key={`${s.title}-${i}`} className="border-t border-slate-800 pt-3"><h4 className="font-bold text-blue-200">{s.title}</h4><p className="mt-1 text-sm text-slate-200 whitespace-pre-line leading-relaxed">{s.text}</p>{s.detail&&<div className="text-[10px] text-slate-500 mt-2">{s.detail}</div>}</article>)}</div>}
+     </section>}
+   </div>;
+diff -ruN vedur15base/src/components/WarningMap.tsx vedur15src/src/components/WarningMap.tsx
+--- a/src/components/WarningMap.tsx	1970-01-01 00:00:00.000000000 +0000
++++ b/src/components/WarningMap.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -0,0 +1,73 @@
++import React, { useMemo, useState } from 'react';
++import { ChevronLeft, ChevronRight, Clock3, Map } from 'lucide-react';
++import type { WeatherWarning, WarningLevel } from '../utils/warnings';
++import { coordsToWmapPercent } from '../utils/locationCoordinates';
++import { ForecastImage } from './ForecastImage';
++
++const BASE_MAP = 'https://www.vedur.is/wmap/wmap_isl.gif';
++const LEVEL_FILL: Record<WarningLevel,string> = {
++  green:'#22c55e', yellow:'#facc15', orange:'#f97316', red:'#dc2626', unknown:'#64748b',
++};
++const LEVEL_TEXT: Record<WarningLevel,string> = {
++  green:'Græn', yellow:'Gul', orange:'Appelsínugul', red:'Rauð', unknown:'Óþekkt',
++};
++
++function floorHour(ms:number){ return Math.floor(ms/3600000)*3600000; }
++function fmtTime(ms:number){ return new Date(ms).toLocaleString('is-IS',{timeZone:'Atlantic/Reykjavik',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
++function isActiveAt(w:WeatherWarning, time:number){
++  const from=Date.parse(w.onset||w.sent||'');
++  const to=Date.parse(w.expires||'');
++  return (!Number.isFinite(from)||time>=from) && (!Number.isFinite(to)||time<=to);
++}
++
++export const WarningMap:React.FC<{warnings:WeatherWarning[]}> = ({warnings}) => {
++  const times=useMemo(()=>{
++    const now=Date.now();
++    const onsets=warnings.map(w=>Date.parse(w.onset)).filter(Number.isFinite);
++    const expires=warnings.map(w=>Date.parse(w.expires)).filter(Number.isFinite);
++    const start=floorHour(Math.min(now,...onsets.filter(v=>v>=now-12*3600000),now));
++    const requestedEnd=Math.max(now+96*3600000,...expires,now+96*3600000);
++    const end=Math.min(requestedEnd,start+7*24*3600000);
++    const out:number[]=[];
++    for(let t=start;t<=end;t+=3600000)out.push(t);
++    return out.length?out:[floorHour(now)];
++  },[warnings]);
++  const nowIndex=useMemo(()=>{
++    let best=0,d=Infinity; const now=Date.now(); times.forEach((t,i)=>{const n=Math.abs(t-now);if(n<d){d=n;best=i;}});return best;
++  },[times]);
++  const [index,setIndex]=useState(nowIndex);
++  const safeIndex=Math.min(index,times.length-1);
++  const selectedTime=times[safeIndex];
++  const active=warnings.filter(w=>isActiveAt(w,selectedTime));
++
++  return <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-2.5 mb-3">
++    <div className="flex items-center gap-2 mb-2">
++      <Map className="w-5 h-5 text-yellow-300"/>
++      <div className="flex-1 min-w-0"><div className="font-black text-sm">Viðvörunarkort</div><div className="text-[11px] text-slate-400 truncate">{fmtTime(selectedTime)} · {active.length?`${active.length} virk viðvörun${active.length===1?'':'ar'}`:'engar virkar viðvaranir'}</div></div>
++      <button onClick={()=>setIndex(nowIndex)} className="min-h-10 px-3 rounded-xl border border-slate-700 bg-slate-950 text-xs font-bold flex items-center gap-1"><Clock3 className="w-4 h-4"/>Núna</button>
++    </div>
++    <div className="relative w-full aspect-[540/390] rounded-xl overflow-hidden border border-slate-700 bg-white">
++      <ForecastImage src={BASE_MAP} alt="Viðvörunarkort Íslands" className="absolute inset-0 w-full h-full object-fill pointer-events-none" draggable={false}/>
++      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
++        {active.map((warning,wi)=>warning.polygon&&warning.polygon.length>=3?<polygon key={`${warning.identifier}-${wi}`} points={warning.polygon.map(p=>{const q=coordsToWmapPercent(p.lat,p.lon);return `${q.xPercent},${q.yPercent}`;}).join(' ')} fill={LEVEL_FILL[warning.level]} fillOpacity="0.46" stroke={LEVEL_FILL[warning.level]} strokeWidth="0.8" vectorEffect="non-scaling-stroke"/>:null)}
++      </svg>
++      {active.map((warning,wi)=>{
++        if(!warning.polygon?.length)return null;
++        const pts=warning.polygon.map(p=>coordsToWmapPercent(p.lat,p.lon));
++        const x=pts.reduce((n,p)=>n+p.xPercent,0)/pts.length;
++        const y=pts.reduce((n,p)=>n+p.yPercent,0)/pts.length;
++        return <div key={`label-${warning.identifier}-${wi}`} className="absolute -translate-x-1/2 -translate-y-1/2 max-w-[42%] px-1.5 py-1 rounded-lg border border-black/30 bg-slate-950/80 text-white text-[8px] sm:text-[10px] font-black text-center leading-tight pointer-events-none shadow" style={{left:`${x}%`,top:`${y}%`}}>{warning.area}</div>;
++      })}
++      {!active.length&&<div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-emerald-950/90 border border-emerald-500/50 px-4 py-2 text-emerald-200 font-black text-sm shadow-xl">Engar viðvaranir</div>}
++    </div>
++    <div className="mt-2 flex items-center gap-2">
++      <button onClick={()=>setIndex(i=>Math.max(0,i-1))} disabled={safeIndex<=0} className="w-11 h-11 grid place-items-center rounded-xl border border-slate-700 bg-slate-950 disabled:opacity-30"><ChevronLeft className="w-5 h-5"/></button>
++      <input aria-label="Tími viðvörunarkorts" type="range" min={0} max={Math.max(0,times.length-1)} value={safeIndex} onChange={e=>setIndex(Number(e.target.value))} className="flex-1 h-8 accent-yellow-400"/>
++      <button onClick={()=>setIndex(i=>Math.min(times.length-1,i+1))} disabled={safeIndex>=times.length-1} className="w-11 h-11 grid place-items-center rounded-xl border border-slate-700 bg-slate-950 disabled:opacity-30"><ChevronRight className="w-5 h-5"/></button>
++    </div>
++    <div className="mt-1 flex flex-wrap gap-2 justify-center text-[10px] text-slate-400">
++      {(['yellow','orange','red'] as WarningLevel[]).map(level=><span key={level} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{backgroundColor:LEVEL_FILL[level]}}/>{LEVEL_TEXT[level]}</span>)}
++    </div>
++  </section>;
++};
+diff -ruN vedur15base/src/components/WarningsPanel.tsx vedur15src/src/components/WarningsPanel.tsx
+--- a/src/components/WarningsPanel.tsx	2026-10-11 23:28:47.000000000 +0000
++++ b/src/components/WarningsPanel.tsx	2026-10-11 23:37:24.431650712 +0000
+@@ -3,6 +3,7 @@
+ import { WeatherWarning, WeatherWarningsData, WarningLevel } from "../utils/warnings";
+ import { WeatherArticlesData } from "../utils/weatherArticles";
+ import { WeatherNewsPanel } from "./WeatherNewsPanel";
++import { WarningMap } from "./WarningMap";
+ 
+ interface WarningsPanelProps {
+   data: WeatherWarningsData | null;
+@@ -60,6 +61,7 @@
+           {loading && !data && <div className="text-center py-12 text-slate-400">Sæki viðvaranir…</div>}
+           {error && <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
++          {data && <WarningMap warnings={data.warnings} />}
+           {data && data.warnings.length === 0 && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-center"><div className="text-2xl">✓</div><div className="font-bold mt-1">Engar virkar veðurviðvaranir</div></div>}
+           <div className="space-y-3">{data?.warnings.map(w => <WarningCard key={`${w.identifier}-${w.area}`} warning={w} />)}</div>
+           {data && <div className="text-center text-[10px] text-slate-500 mt-4">Uppfært hjá Veðurstofu: {fmt(data.updateTS || data.fetchedAt)}</div>}
+diff -ruN vedur15base/src/utils/cloudSampler.ts vedur15src/src/utils/cloudSampler.ts
+--- a/src/utils/cloudSampler.ts	2026-10-11 23:28:47.000000000 +0000
++++ b/src/utils/cloudSampler.ts	2026-10-11 23:37:24.431650712 +0000
+@@ -1,15 +1,40 @@
+ /**
+- * Cloud coverage analysis tool.
+- * Reads pixel data around (xPercent, yPercent) on the Vedur cloud coverage PNG.
+- * In the Vedur aurora/cloud map, green shades represent cloud density (0 = clear, 255 = overcast).
++ * Cloud coverage analysis for Veðurstofa's aurora cloud map.
++ * The official legend states that green areas are cloudy and white areas are clear.
++ * This is a FALLBACK only; location scoring primarily uses the numeric station/model
++ * cloud-cover field from Staðaspá when it is available.
+  */
+ 
++export function cloudPercentFromRgb(r: number, g: number, b: number): number | null {
++  const max = Math.max(r, g, b);
++  const min = Math.min(r, g, b);
++  const brightness = (r + g + b) / 3;
++  const saturation = max > 0 ? (max - min) / max : 0;
++
++  // White / light neutral pixels are explicitly clear sky on the IMO aurora map.
++  // This fixes the old bug where 255/255/255 was interpreted as 100% cloud.
++  if (brightness >= 185 && saturation <= 0.12) return 0;
++
++  // Dark neutral pixels are labels, coastlines or borders. Ignore them instead of
++  // turning map text into cloud cover.
++  if (brightness < 185 && saturation <= 0.12) return null;
++
++  // Cloud shading is green. Measure "excess green" rather than raw G so white,
++  // grey and black cannot be mistaken for cloud.
++  const greenExcess = g - (r + b) / 2;
++  if (greenExcess <= 10 || g <= r || g <= b) return 0;
++
++  // Pale green = partial cloud; saturated green = dense cloud. The map is not a
++  // calibrated numeric raster, so this is deliberately conservative.
++  const percent = Math.round((greenExcess / 125) * 100);
++  return Math.max(0, Math.min(100, percent));
++}
++
+ export function sampleCloudCoverage(
+   img: HTMLImageElement,
+   xPercent: number,
+   yPercent: number
+ ): number {
+   try {
+     const width = img.naturalWidth || 540;
+     const height = img.naturalHeight || 397;
+-
+     if (width === 0 || height === 0) return 0;
+ 
+     const canvas = document.createElement("canvas");
+@@ -18,57 +43,28 @@
+     const ctx = canvas.getContext("2d", { willReadFrequently: true });
+     if (!ctx) return 0;
+-
+     ctx.drawImage(img, 0, 0, width, height);
+ 
+     const centerX = Math.round((xPercent / 100) * width);
+     const centerY = Math.round((yPercent / 100) * height);
+-
+-    // Sample a 9x9 patch around the point to smooth local contours
+-    const radius = 4;
++    const radius = 5;
+     const startX = Math.max(0, centerX - radius);
+     const startY = Math.max(0, centerY - radius);
+     const patchWidth = Math.min(width - startX, radius * 2 + 1);
+     const patchHeight = Math.min(height - startY, radius * 2 + 1);
+-
+-    const imgData = ctx.getImageData(startX, startY, patchWidth, patchHeight);
+-    const data = imgData.data;
+-
+-    let totalCloudiness = 0;
+-    let validSamples = 0;
++    const data = ctx.getImageData(startX, startY, patchWidth, patchHeight).data;
+ 
++    const samples: number[] = [];
+     for (let i = 0; i < data.length; i += 4) {
+-      const r = data[i];
+-      const g = data[i + 1];
+-      const b = data[i + 2];
+-      const a = data[i + 3];
+-
+-      if (a < 20) continue; // transparent
+-
+-      // In Vedur's aurora cloud map:
+-      // Green dominant color indicates cloud presence.
+-      // Pure black or dark neutral is clear sky (0% clouds).
+-      if (g > 25 && g >= r * 0.9 && g >= b * 0.9) {
+-        // Cloud intensity proportional to green channel value
+-        const cloudPercent = Math.min(100, Math.round((g / 250) * 100));
+-        totalCloudiness += cloudPercent;
+-      } else {
+-        // Clear sky
+-        totalCloudiness += 0;
+-      }
+-      validSamples++;
++      if (data[i + 3] < 20) continue;
++      const value = cloudPercentFromRgb(data[i], data[i + 1], data[i + 2]);
++      if (value != null) samples.push(value);
+     }
++    if (!samples.length) return 0;
+ 
+-    if (validSamples === 0) return 0;
+-    return Math.round(totalCloudiness / validSamples);
++    // Trim map-label/edge outliers and average the central population.
++    samples.sort((a, b) => a - b);
++    const trim = samples.length >= 20 ? Math.floor(samples.length * 0.1) : 0;
++    const core = samples.slice(trim, samples.length - trim || undefined);
++    return Math.round(core.reduce((sum, n) => sum + n, 0) / core.length);
+   } catch (err) {
+     console.warn("Could not sample cloud coverage:", err);
+     return 0;
+   }
+ }
+-
+-/**
+- * Loads an off-screen image and samples cloud cover at coordinates.
+- */
+-export async function sampleImageAtCoords(
+-  imageUrl: string,
+-  xPercent: number,
+-  yPercent: number
+-): Promise<number> {
+-  return new Promise((resolve) => {
+-    const img = new Image();
+-    img.crossOrigin = "anonymous";
+-    img.onload = () => {
+-      const cloud = sampleCloudCoverage(img, xPercent, yPercent);
+-      resolve(cloud);
+-    };
+-    img.onerror = () => {
+-      resolve(50); // fallback
+-    };
+-    img.src = imageUrl;
+-  });
+-}
+diff -ruN vedur15base/src/utils/devFixtures.ts vedur15src/src/utils/devFixtures.ts
+--- a/src/utils/devFixtures.ts	2026-10-11 23:28:47.000000000 +0000
++++ b/src/utils/devFixtures.ts	2026-10-11 23:37:24.431650712 +0000
+@@ -29,6 +29,12 @@
+       severity: level === 'red' ? 'Extreme' : level === 'orange' ? 'Severe' : 'Moderate',
+       certainty: 'Likely',
+       alertType: 'Wind',
++      polygon: [
++        { lat: 64.17, lon: -22.04 }, { lat: 64.19, lon: -21.70 },
++        { lat: 64.15, lon: -21.68 }, { lat: 64.09, lon: -21.78 },
++        { lat: 64.05, lon: -21.93 }, { lat: 64.04, lon: -22.04 },
++        { lat: 64.09, lon: -22.07 }, { lat: 64.17, lon: -22.04 },
++      ],
+     }],
+   };
+ }
+diff -ruN vedur15base/src/utils/locationCoordinates.ts vedur15src/src/utils/locationCoordinates.ts
+--- a/src/utils/locationCoordinates.ts	2026-10-11 23:28:47.000000000 +0000
++++ b/src/utils/locationCoordinates.ts	2026-10-11 23:37:24.431650712 +0000
+@@ -58,3 +58,35 @@
+   const yPercent = Math.max(2, Math.min(98, ((MAP_MAX_Y - p.y) / (MAP_MAX_Y - MAP_MIN_Y)) * 100));
+   return { xPercent, yPercent };
+ }
++
++
++// Exact coordinate transform used by Veðurstofa's own Staðaspá/observation map
++// (VI.utils.CoordsConverter in vi-base.js). This is intentionally separate from
++// the HARMONIE/Lambert map transform above because wmap_isl.gif uses its own
++// polar map projection and dimensions.
++export function coordsToWmapPercent(lat: number, lon: number): { xPercent: number; yPercent: number } {
++  const dr = Math.PI / 180;
++  const llLat = 63.190, llLon = -24.150, trLat = 66.590, trLon = -12.950;
++  const lam0 = -19;
++  const width = 540, height = 390;
++  const t1 = Math.sin((45 - llLat / 2) * dr) / Math.cos((45 - llLat / 2) * dr);
++  const x1 = 2 * t1 * Math.sin((-llLon + lam0) * dr);
++  const y1 = -2 * t1 * Math.cos((-llLon + lam0) * dr);
++  const t2 = Math.sin((45 - trLat / 2) * dr) / Math.cos((45 - trLat / 2) * dr);
++  const x2 = 2 * t2 * Math.sin((-trLon + lam0) * dr);
++  const t = Math.sin((45 - lat / 2) * dr) / Math.cos((45 - lat / 2) * dr);
++  const xRaw = 2 * t * Math.sin((-lon + lam0) * dr);
++  const yRaw = -2 * t * Math.cos((-lon + lam0) * dr);
++  const x = Math.round(1 + (width - 1) * (xRaw - x1) / (x2 - x1));
++  const y = Math.round(1 + (width - 1) * (y1 - yRaw) / (x2 - x1));
++
++  // The original page positions markers using CSS `right`, so convert that to
++  // ordinary left-origin percentages for React/SVG overlays.
++  const rightPx = Math.abs(x - width);
++  const topPx = Math.abs(y - height);
++  const leftPx = width - rightPx;
++  return {
++    xPercent: Math.max(0, Math.min(100, leftPx / width * 100)),
++    yPercent: Math.max(0, Math.min(100, topPx / height * 100)),
++  };
++}
+diff -ruN vedur15base/src/utils/locationWeather.ts vedur15src/src/utils/locationWeather.ts
+--- a/src/utils/locationWeather.ts	1970-01-01 00:00:00.000000000 +0000
++++ b/src/utils/locationWeather.ts	2026-10-11 23:37:24.431650712 +0000
+@@ -0,0 +1,174 @@
++import type { AuroraDayData, ForecastFrame } from '../types';
++import type { StationForecastData, StationForecastStation, StationHour } from './stationForecast';
++import { getNightKey, isWithinDarkness } from './auroraEvaluator';
++
++export interface LocationCloudEstimate {
++  percent: number;
++  sourceLabel: string;
++  nearestStation: string;
++  nearestDistanceKm: number;
++  matchedTimestamp: string;
++}
++
++export interface BestWeatherResult {
++  station: StationForecastStation;
++  hour: StationHour;
++  cloudPercent: number;
++  temperature: number;
++  score: number;
++}
++
++export interface BestAuroraFrameInfo {
++  frameIndex: number;
++  timeStr: string;
++  dayShort: string;
++  cloudPercent: number;
++  act: number;
++  isCurrentDark: boolean;
++}
++
++export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
++  const r = 6371;
++  const toRad = (v: number) => v * Math.PI / 180;
++  const dLat = toRad(bLat - aLat);
++  const dLon = toRad(bLon - aLon);
++  const q = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
++  return 2 * r * Math.atan2(Math.sqrt(q), Math.sqrt(1 - q));
++}
++
++export function normalizeCloud(value: number | null | undefined): number | null {
++  if (value == null || !Number.isFinite(value)) return null;
++  if (value >= 0 && value <= 1.0001) return Math.max(0, Math.min(100, value * 100));
++  if (value >= 0 && value <= 100) return value;
++  return null;
++}
++
++export function closestHour(station: StationForecastStation, targetIso: string): { hour: StationHour; diffMs: number } | null {
++  const target = Date.parse(targetIso);
++  if (!Number.isFinite(target) || !station.hours.length) return null;
++  let best = station.hours[0];
++  let diff = Math.abs(Date.parse(best.timestamp) - target);
++  for (let i = 1; i < station.hours.length; i++) {
++    const d = Math.abs(Date.parse(station.hours[i].timestamp) - target);
++    if (d < diff) { best = station.hours[i]; diff = d; }
++  }
++  return { hour: best, diffMs: diff };
++}
++
++function inferredCloudFromWeatherCode(code: number | null): number | null {
++  if (code == null) return null;
++  if (code === 1) return 3;
++  if (code === 2) return 25;
++  if (code === 3) return 65;
++  if (code === 4) return 95;
++  if ([5,6,7,8,9,10,11,12,13,17,18,19,20,21,22,23].includes(code)) return 90;
++  return 65;
++}
++
++export function cloudForStationHour(hour: StationHour): number | null {
++  return normalizeCloud(hour.cloudCover) ?? inferredCloudFromWeatherCode(hour.weatherCode);
++}
++
++export function estimateCloudAtLocation(
++  data: StationForecastData | null | undefined,
++  lat: number,
++  lon: number,
++  targetIso: string,
++): LocationCloudEstimate | null {
++  if (!data?.stations.length) return null;
++  const candidates = data.stations.flatMap(station => {
++    const match = closestHour(station, targetIso);
++    if (!match || match.diffMs > 4 * 60 * 60 * 1000) return [];
++    const cloud = cloudForStationHour(match.hour);
++    if (cloud == null) return [];
++    return [{ station, hour: match.hour, cloud, distance: distanceKm(lat, lon, station.lat, station.lon) }];
++  }).sort((a, b) => a.distance - b.distance).slice(0, 5);
++  if (!candidates.length) return null;
++
++  // A very nearby station/model point is the strongest evidence. Otherwise use
++  // inverse-distance weighting across nearby forecast points.
++  const nearest = candidates[0];
++  let weighted = 0;
++  let totalWeight = 0;
++  for (const c of candidates) {
++    const effectiveDistance = Math.max(6, c.distance);
++    const weight = 1 / Math.pow(effectiveDistance, 1.55);
++    weighted += c.cloud * weight;
++    totalWeight += weight;
++  }
++  let percent = totalWeight > 0 ? weighted / totalWeight : nearest.cloud;
++  if (nearest.distance <= 18) percent = nearest.cloud * 0.82 + percent * 0.18;
++
++  return {
++    percent: Math.max(0, Math.min(100, Math.round(percent))),
++    sourceLabel: nearest.distance <= 25 ? `${nearest.station.name} · staðaspá` : `${candidates.length} næstu stöðvar · staðaspá`,
++    nearestStation: nearest.station.name,
++    nearestDistanceKm: nearest.distance,
++    matchedTimestamp: nearest.hour.timestamp,
++  };
++}
++
++export function findBestWeatherStation(data: StationForecastData, targetIso: string): BestWeatherResult | null {
++  const rows = data.stations.flatMap(station => {
++    const match = closestHour(station, targetIso);
++    if (!match || match.diffMs > 4 * 60 * 60 * 1000 || match.hour.temperature == null) return [];
++    const cloud = cloudForStationHour(match.hour);
++    if (cloud == null) return [];
++    return [{ station, hour: match.hour, cloud, temp: match.hour.temperature }];
++  });
++  if (!rows.length) return null;
++
++  const minTemp = Math.min(...rows.map(r => r.temp));
++  const maxTemp = Math.max(...rows.map(r => r.temp));
++  const span = Math.max(1, maxTemp - minTemp);
++  let best: BestWeatherResult | null = null;
++  for (const row of rows) {
++    const clearScore = 1 - row.cloud / 100;
++    const warmScore = (row.temp - minTemp) / span;
++    // Clear sky is the dominant requirement; warmth breaks close calls.
++    const score = clearScore * 0.68 + warmScore * 0.32;
++    if (!best || score > best.score || (Math.abs(score - best.score) < 0.01 && row.temp > best.temperature)) {
++      best = { station: row.station, hour: row.hour, cloudPercent: Math.round(row.cloud), temperature: row.temp, score };
++    }
++  }
++  return best;
++}
++
++export function findBestAuroraFrameFromStations(
++  frames: ForecastFrame[],
++  startIndex: number,
++  auroraDays: Record<string, AuroraDayData> | undefined,
++  stationData: StationForecastData,
++  lat: number,
++  lon: number,
++): BestAuroraFrameInfo | null {
++  if (!frames.length) return null;
++  const end = Math.min(frames.length, startIndex + 36);
++  let best: { index: number; cloud: number; act: number; score: number } | null = null;
++
++  const consider = (i: number) => {
++    const frame = frames[i];
++    const { year, month, day, hour, minute } = frame.dateParts;
++    const dayData = auroraDays?.[getNightKey(year, month, day, hour)];
++    const dark = dayData?.hasDarkness
++      ? isWithinDarkness(hour, minute, dayData.darknessStart, dayData.darknessEnd)
++      : (hour >= 21 || hour <= 5);
++    if (!dark) return;
++    const estimate = estimateCloudAtLocation(stationData, lat, lon, frame.timestamp);
++    if (!estimate) return;
++    const act = dayData?.act ?? 2;
++    const score = (100 - estimate.percent) * 0.78 + (act / 9 * 100) * 0.22;
++    if (!best || score > best.score) best = { index: i, cloud: estimate.percent, act, score };
++  };
++
++  for (let i = Math.max(0, startIndex); i < end; i++) consider(i);
++  if (!best) for (let i = 0; i < Math.min(frames.length, 36); i++) consider(i);
++  if (!best) return null;
++
++  const winner = best as { index: number; cloud: number; act: number; score: number };
++  const frame = frames[winner.index];
++  const d = new Date(frame.timestamp);
++  const days = ['Sun','Mán','Þri','Mið','Fim','Fös','Lau'];
++  return {
++    frameIndex: winner.index,
++    timeStr: `${String(frame.dateParts.hour).padStart(2,'0')}:${String(frame.dateParts.minute).padStart(2,'0')}`,
++    dayShort: days[d.getUTCDay()] || '',
++    cloudPercent: winner.cloud,
++    act: winner.act,
++    isCurrentDark: winner.index === startIndex,
++  };
++}
+diff -ruN vedur15base/tests/stationWarnings.test.ts vedur15src/tests/stationWarnings.test.ts
+--- a/tests/stationWarnings.test.ts	2026-10-11 23:28:47.000000000 +0000
++++ b/tests/stationWarnings.test.ts	2026-10-11 23:37:24.431650712 +0000
+@@ -2,6 +2,8 @@
+ import { parseStationForecastPages } from '../src/utils/stationForecast.ts';
+ import { parseWarningsPage } from '../src/utils/warnings.ts';
+ import { parseWeatherArticlesPage } from '../src/utils/weatherArticles.ts';
++import { cloudPercentFromRgb } from '../src/utils/cloudSampler.ts';
++import { estimateCloudAtLocation, findBestWeatherStation } from '../src/utils/locationWeather.ts';
+ 
+ const stationHtml = `
+ <script>VI.conf={now:new Date(2026,10-1,11,19,0),tInfo:{interval:[1,1],wTime:[new Date(2026,10-1,11,19,0),new Date(2026,10-1,11,20,0)]},wInfo:{1:{'W':[4,6],'T':[7,8],'D2':[180,190],'F':[5,6],'R':[0.0,1.2],'N':[1.0,0.8],'RT':['?',3]}}};</script>
+@@ -34,3 +36,25 @@
+ assert.equal(news.articles[0].title, 'Tíðarfar í september 2026');
+ assert.match(news.articles[0].url, /tidarfar-test$/);
+ console.log('weather articles parser tests passed');
++
++
++// Cloud-map fallback must treat the official white background as clear, not 100% cloud.
++assert.equal(cloudPercentFromRgb(255,255,255), 0);
++assert.equal(cloudPercentFromRgb(235,236,235), 0);
++assert.ok((cloudPercentFromRgb(20,200,20) ?? 0) > 80);
++
++const scoringData = {
++  now: '2026-10-11T20:00:00.000Z', fetchedAt: '2026-10-11T20:00:00.000Z', textForecasts: [],
++  stations: [
++    { id:'ak', name:'Akureyri', lat:65.6835, lon:-18.0878, dailyPrecip:[], hours:[{ timestamp:'2026-10-11T21:00:00.000Z', weatherCode:1, temperature:7, windSpeed:2, windDirection:0, precipitation:0, cloudCover:0, intervalHours:1 }] },
++    { id:'rvk', name:'Reykjavík', lat:64.1466, lon:-21.9426, dailyPrecip:[], hours:[{ timestamp:'2026-10-11T21:00:00.000Z', weatherCode:4, temperature:11, windSpeed:4, windDirection:180, precipitation:0, cloudCover:1, intervalHours:1 }] },
++    { id:'eg', name:'Egilsstaðir', lat:65.2669, lon:-14.3948, dailyPrecip:[], hours:[{ timestamp:'2026-10-11T21:00:00.000Z', weatherCode:2, temperature:9, windSpeed:3, windDirection:90, precipitation:0, cloudCover:0.2, intervalHours:1 }] },
++  ],
++};
++const akCloud = estimateCloudAtLocation(scoringData, 65.6835, -18.0878, '2026-10-11T21:00:00.000Z');
++assert.ok(akCloud);
++assert.ok(akCloud!.percent <= 10, `Akureyri expected clear, got ${akCloud!.percent}%`);
++const bestWeather = findBestWeatherStation(scoringData, '2026-10-11T21:00:00.000Z');
++assert.ok(bestWeather);
++assert.equal(bestWeather!.station.name, 'Egilsstaðir'); // mostly clear and warmer than Akureyri
++console.log('cloud/location scoring tests passed');
