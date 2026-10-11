@@ -1,0 +1,50 @@
+name: Inspect Warnings
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-warnings.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download warning page and identify structured data
+        shell: bash
+        run: |
+          set -e
+          mkdir -p inspect/warnings/scripts
+          python3 - <<'PY'
+          import re, urllib.parse, urllib.request, pathlib, json
+          page='https://www.vedur.is/vidvaranir'
+          req=urllib.request.Request(page,headers={'User-Agent':'Mozilla/5.0'})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              html=r.read().decode('utf-8','replace')
+              print('STATUS',r.status)
+          pathlib.Path('inspect/warnings/page.html').write_text(html,encoding='utf-8')
+          print('=== PAGE MATCHES ===')
+          pats=['viðvör','warning','alert','yellow','gul','orange','appels','red','rauð','valid','gildir','area','svæði','json','api']
+          for i,line in enumerate(html.splitlines(),1):
+              if any(p.lower() in line.lower() for p in pats):
+                  print(i,line[:2600])
+          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I)
+          print('SCRIPTS',len(srcs))
+          for i,src in enumerate(srcs):
+              u=urllib.parse.urljoin(page,src)
+              try:
+                  rq=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  txt=urllib.request.urlopen(rq,timeout=30).read().decode('utf-8','replace')
+              except Exception as e:
+                  print('FAIL',u,e); continue
+              name=f'{i:02d}_'+re.sub(r'[^A-Za-z0-9_.-]+','_',urllib.parse.urlparse(u).path.rsplit('/',1)[-1] or 'script.js')
+              pathlib.Path('inspect/warnings/scripts',name).write_text(txt,encoding='utf-8')
+              if re.search(r'warning|vidvar|alert|cap|hazard|api|json',txt,re.I):
+                  print('\n### SCRIPT MATCH',u,'###')
+                  for m in re.finditer(r'.{0,250}(?:warning|vidvar|alert|cap|hazard|api|json).{0,800}',txt,re.I|re.S):
+                      print(m.group(0).replace('\n',' ')[:1600])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: warning-inspection
+          path: inspect/warnings
+          if-no-files-found: error
