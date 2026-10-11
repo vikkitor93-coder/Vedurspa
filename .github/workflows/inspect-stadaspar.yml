@@ -1,0 +1,50 @@
+name: Inspect Staðaspá
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/inspect-stadaspar.yml'
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Staðaspá page and scripts
+        shell: bash
+        run: |
+          set -e
+          mkdir -p inspect/stadaspar/scripts
+          python3 - <<'PY'
+          import re, urllib.parse, urllib.request, pathlib
+          page='https://www.vedur.is/vedur/spar/stadaspar/'
+          req=urllib.request.Request(page,headers={'User-Agent':'Mozilla/5.0'})
+          with urllib.request.urlopen(req,timeout=30) as r:
+              html=r.read().decode('utf-8','replace')
+              print('STATUS',r.status)
+              print('X-FRAME-OPTIONS',r.headers.get('X-Frame-Options'))
+              print('CSP',r.headers.get('Content-Security-Policy'))
+          pathlib.Path('inspect/stadaspar/page.html').write_text(html,encoding='utf-8')
+          srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I)
+          print('SCRIPTS',len(srcs))
+          for i,src in enumerate(srcs):
+              u=urllib.parse.urljoin(page,src)
+              print('SCRIPT',u)
+              try:
+                  rq=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  txt=urllib.request.urlopen(rq,timeout=30).read().decode('utf-8','replace')
+              except Exception as e:
+                  print('FAIL',u,e); continue
+              name=f'{i:02d}_'+re.sub(r'[^A-Za-z0-9_.-]+','_',urllib.parse.urlparse(u).path.rsplit('/',1)[-1] or 'script.js')
+              pathlib.Path('inspect/stadaspar/scripts',name).write_text(txt,encoding='utf-8')
+              if re.search(r'stadaspar|station|forecast|sp[aá]|WeatherServlet|wstation|xml|json|ajax',txt,re.I):
+                  print('\n### MATCH',u,'###')
+                  for m in re.finditer(r'.{0,220}(?:stadaspar|station|forecast|WeatherServlet|wstation|ajax|json|xml).{0,500}',txt,re.I|re.S):
+                      print(m.group(0).replace('\n',' ')[:1200])
+          PY
+          echo '=== PAGE RELEVANT ==='
+          grep -Eio '.{0,180}(stadaspar|station|forecast|WeatherServlet|wstation|ajax|json|xml).{0,500}' inspect/stadaspar/page.html | head -200 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stadaspar-inspection
+          path: inspect/stadaspar
+          if-no-files-found: error
