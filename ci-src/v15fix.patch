@@ -1,0 +1,29 @@
+--- a/src/utils/stationForecast.ts
++++ b/src/utils/stationForecast.ts
+@@ -95,9 +95,16 @@
+   catch { return []; }
+ }
+ 
++function parseLooseObject(text: string): Record<string, any> {
++  // Veðurstofa uses numeric station IDs as bare JavaScript object keys (e.g. {1:{...}}).
++  // JSON5 does not accept numeric property names, so quote only those keys before parsing.
++  const normalized = text.replace(/([,{]\s*)(\d+)\s*:/g, '$1\"$2\":');
++  return JSON5.parse(normalized) as Record<string, any>;
++}
++
+ function parseStationMeta(js: string): Record<string, StationMeta> {
+   const objText = extractBalanced(js, 'VI.wsInfo =', '{', '}');
+-  const raw = JSON5.parse(objText) as Record<string, any>;
++  const raw = parseLooseObject(objText);
+   const result: Record<string, StationMeta> = {};
+   for (const [id, s] of Object.entries(raw)) {
+     if (!s || !s.name || !Number.isFinite(Number(s.lat)) || !Number.isFinite(Number(s.lon))) continue;
+@@ -152,7 +159,7 @@
+   const intervals = parseIntervals(html);
+   const meta = parseStationMeta(stationJs);
+   const wInfoText = extractBalanced(html, 'wInfo:', '{', '}');
+-  const wInfo = JSON5.parse(wInfoText) as Record<string, any>;
++  const wInfo = parseLooseObject(wInfoText);
+   const stations: StationForecastStation[] = [];
+ 
+   for (const [id, s] of Object.entries(wInfo)) {
