@@ -31,6 +31,7 @@ jobs:
           patch -p1 -d app < /tmp/v15.patch
           patch -p1 -d app < ci-src/v15fix.patch
           patch -p1 -d app < ci-src/v15fix2.patch
+          patch -p1 -d app < ci-src/v16.patch
 
       - uses: actions/setup-node@v4
         with:
@@ -75,12 +76,12 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='6' versionName='1.5'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.5.apk
-          sha256sum Vedurspa-1.5.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='7' versionName='1.6'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.apk
+          sha256sum Vedurspa-1.6.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.5
-          path: app/Vedurspa-1.5.apk
+          name: Vedurspa-1.6
+          path: app/Vedurspa-1.6.apk
           if-no-files-found: error
