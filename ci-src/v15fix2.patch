@@ -1,0 +1,11 @@
+--- a/native-src/is/viktor/vedurspa/warnings/WarningWorker.java
++++ b/native-src/is/viktor/vedurspa/warnings/WarningWorker.java
+@@ -144,7 +144,7 @@
+         int pos=text.indexOf(marker); if(pos<0) throw new IllegalStateException("warning data missing");
+         int start=text.indexOf('{',pos+marker.length()); if(start<0) throw new IllegalStateException("warning object missing");
+         int depth=0; char quote=0; boolean escaped=false;
+-        for(int i=start;i<text.length();i++) { char ch=text.charAt(i); if(quote!=0){ if(escaped)escaped=false; else if(ch=='\\\\')escaped=true; else if(ch==quote)quote=0; continue;} if(ch=='\"'||ch=='\'') {quote=ch;continue;} if(ch=='{')depth++; else if(ch=='}'&&--depth==0)return text.substring(start,i+1); }
++        for(int i=start;i<text.length();i++) { char ch=text.charAt(i); if(quote!=0){ if(escaped)escaped=false; else if(ch=='\\')escaped=true; else if(ch==quote)quote=0; continue;} if(ch=='\"'||ch=='\'') {quote=ch;continue;} if(ch=='{')depth++; else if(ch=='}'&&--depth==0)return text.substring(start,i+1); }
+         throw new IllegalStateException("warning object incomplete");
+     }
+ }
