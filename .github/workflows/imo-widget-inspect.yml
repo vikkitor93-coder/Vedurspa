@@ -1,0 +1,30 @@
+name: Inspect IMO interactive widget
+on:
+  push:
+    branches: [vedurspa-1.6.9-widget-controls]
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect live HTML and controls
+        shell: bash
+        run: |
+          curl -LfsS --max-time 45 https://www.vedur.is/vedur/spar/stadaspar/ > /tmp/imo.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          import re
+          data=open('/tmp/imo.html').read()
+          print('HTML_LENGTH',len(data))
+          class P(HTMLParser):
+            def __init__(self):super().__init__();self.depth=0
+            def handle_starttag(self,t,a):
+              d=dict(a)
+              if t=='script' and d.get('src'): print('SCRIPT',d['src'])
+              if t=='link' and d.get('href') and 'css' in d.get('rel', ''):print('CSS',d['href'])
+              if d.get('id') in ('wmapslider','wmapcontainer','wmap1','wmap1_foot','stationlist','stationinp'):
+                print('ELEMENT',t,d)
+          p=P();p.feed(data)
+          for key in ('id="wmapslider"','id="wmapcontainer"','id="wmap1"'):
+            i=data.find(key);print('HTML_SNIPPET',key,re.sub(r'\\s+',' ',data[max(0,i-200):i+3600])[:3800])
+          PY
