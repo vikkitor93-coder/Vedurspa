@@ -27,6 +27,17 @@ jobs:
                   if any(v in signal for v in ('map','spar','weather','station','forecast','spakort','tab','time')) or t in ('canvas','svg','iframe'):
                       print(t,{k:v for k,v in d.items() if k in ('id','class','src','type')})
           p=P();p.feed(open('/tmp/imo.html').read())
+          class Ancestor(HTMLParser):
+              def __init__(self): super().__init__();self.stack=[]
+              def handle_starttag(self,t,a):
+                  d=dict(a);self.stack.append((t,d))
+                  if d.get('id') in ('wmapcontainer','wmap1','wmapslider','wtab0','wtab1','stationinp','slistPopBox','wmap1_foot'):
+                      print('ANCESTRY',d['id'],' > '.join(x+('#'+v['id'] if 'id' in v else '.'+str(v.get('class','')).split(' ')[0] if v.get('class') else '') for x,v in self.stack[-12:]))
+              def handle_endtag(self,t):
+                  for i in range(len(self.stack)-1,-1,-1):
+                      if self.stack[i][0]==t: self.stack=self.stack[:i];break
+          Ancestor().feed(open('/tmp/imo.html').read())
+
           PY
 
       - name: Reconstruct source
