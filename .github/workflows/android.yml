@@ -48,6 +48,9 @@ jobs:
           base64 -d ci-src/v164/overlay.tar.gz.b64 > /tmp/v164-overlay.tar.gz
           echo "a1d8b94bc45219410ac5e21341e59574bf12a771ae0dfacfe59c962549406894  /tmp/v164-overlay.tar.gz" | sha256sum -c -
           tar -xzf /tmp/v164-overlay.tar.gz -C app
+          base64 -d ci-src/v165/overlay.tar.gz.b64 > /tmp/v165-overlay.tar.gz
+          echo "8cc6d9a66dd8a1533d79ba5d61e784bd2c4db93c0db11f1130c5fa90f5f03de7  /tmp/v165-overlay.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/v165-overlay.tar.gz -C app
 
       - uses: actions/setup-node@v4
         with:
@@ -81,14 +84,14 @@ jobs:
           cp -a dist/. ../pc-bundle/web/
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
-          printf 'Veðurspá 1.6.4 for Windows. Extract everything. Double-click Start Veðurspá.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.4.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.4.zip | tail -n 1
+          printf 'Veðurspá 1.6.5 for Windows. Extract everything. Double-click Start Veðurspá.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.5.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.5.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.4
-          path: Vedurspa-PC-HTML-1.6.4.zip
+          name: Vedurspa-PC-HTML-1.6.5
+          path: Vedurspa-PC-HTML-1.6.5.zip
           if-no-files-found: error
 
       - name: Generate Android project
@@ -114,12 +117,12 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='11' versionName='1.6.4'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.4.apk
-          sha256sum Vedurspa-1.6.4.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='12' versionName='1.6.5'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.5.apk
+          sha256sum Vedurspa-1.6.5.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.4
-          path: app/Vedurspa-1.6.4.apk
+          name: Vedurspa-1.6.5
+          path: app/Vedurspa-1.6.5.apk
           if-no-files-found: error
