@@ -14,6 +14,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Inspect original widget timeline (temporary)
+        shell: bash
+        run: |
+          curl -fsSL --max-time 45 https://www.vedur.is/vedur/spar/stadaspar/ -o /tmp/imo.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          import re
+          data=open('/tmp/imo.html').read()
+          print('HTML_LENGTH',len(data))
+          class P(HTMLParser):
+              def handle_starttag(self,t,a):
+                  d=dict(a)
+                  if t=='script' and d.get('src'):print('SCRIPT',d.get('src'))
+                  if d.get('id') in ('wmapslider','wmapcontainer','wmap1','wmap1_foot','stationinp'):
+                      print('ELEMENT',t,d)
+          P().feed(data)
+          for key in ('id="wmapslider"','id="wmapcontainer"','id="wmap1"'):
+              i=data.find(key)
+              if i>=0: print('HTML_SNIPPET',key,re.sub(r'\\s+',' ',data[max(0,i-160):i+2500])[:2600])
+          PY
       - name: Reconstruct source
         shell: bash
         run: |
