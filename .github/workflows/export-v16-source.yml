@@ -1,0 +1,37 @@
+name: Export Current 1.6 Source
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/export-v16-source.yml'
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct current 1.6 source
+        shell: bash
+        run: |
+          set -e
+          cat ci-src/part-* > /tmp/base.zip
+          mkdir app
+          unzip -q /tmp/base.zip -d app
+          base64 -d ci-src/v12.patch.gz.b64 | gunzip > /tmp/v12.patch
+          patch -p1 -d app < /tmp/v12.patch
+          patch -p1 -d app < ci-src/v12fix.patch
+          base64 -d ci-src/v13.patch.gz.b64 | gunzip > /tmp/v13.patch
+          patch -p1 -d app < /tmp/v13.patch
+          cat ci-src/v15/part-* > /tmp/v15.b64
+          base64 -d /tmp/v15.b64 | gunzip > /tmp/v15.patch
+          patch -p1 -d app < /tmp/v15.patch
+          patch -p1 -d app < ci-src/v15fix.patch
+          patch -p1 -d app < ci-src/v15fix2.patch
+          cat ci-src/v16-overlay/part-* > /tmp/v16-overlay.b64
+          base64 -d /tmp/v16-overlay.b64 > /tmp/v16-overlay.tar.gz
+          tar -xzf /tmp/v16-overlay.tar.gz -C app
+          (cd app && zip -qr ../Vedurspa-current-1.6-source.zip . -x 'node_modules/*' 'android/*')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-current-1.6-source
+          path: Vedurspa-current-1.6-source.zip
+          if-no-files-found: error
