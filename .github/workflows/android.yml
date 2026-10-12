@@ -69,6 +69,9 @@ jobs:
           base64 -d ci-src/v1610/overlay.tar.gz.b64 > /tmp/v1610-overlay.tar.gz
           echo '51bb870c1d4c66d6f7582c57305a3923e011d73c9f1fe1d0f6ed5acdf0bfe1bd  /tmp/v1610-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/v1610-overlay.tar.gz -C app
+          base64 -d ci-src/v1611/overlay.tar.gz.b64 > /tmp/v1611-overlay.tar.gz
+          echo '2fb67a1c835cd479180d69eb0cd8f2383e8cbe20e841eab8f519019e642563a6  /tmp/v1611-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1611-overlay.tar.gz -C app
 
       - uses: actions/setup-node@v4
         with:
@@ -113,14 +116,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='17' versionName='1.6.10'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.10.apk
-          sha256sum Vedurspa-1.6.10.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='18' versionName='1.6.11'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.11.apk
+          sha256sum Vedurspa-1.6.11.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.10
-          path: app/Vedurspa-1.6.10.apk
+          name: Vedurspa-1.6.11
+          path: app/Vedurspa-1.6.11.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -136,12 +139,12 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.10 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.10.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.10.zip | tail -n 1
+          printf 'Veðurspá 1.6.11 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.11.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.11.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.10
-          path: Vedurspa-PC-HTML-1.6.10.zip
+          name: Vedurspa-PC-HTML-1.6.11
+          path: Vedurspa-PC-HTML-1.6.11.zip
           if-no-files-found: error
