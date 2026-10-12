@@ -14,6 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Probe original Staðaspá timeline handlers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import urllib.request,re
+          for name,path in [('app','/web2/js/app.min.js?v=538'),('vi','/js/vi-res_is.js?v=538'),('base','/js/vi-base.js?v=538')]:
+            try:
+              data=urllib.request.urlopen('https://www.vedur.is'+path,timeout=25).read().decode('utf-8','replace')
+              print('PROBE',name,len(data))
+              for pattern in ('slid1Pos','slid1Day','wmapslider','slidertrack','wmap1','wmapcontainer','mapDate','getForecast','changeTime'):
+                m=list(re.finditer(re.escape(pattern),data,re.I))
+                print('MATCH',name,pattern,len(m))
+                for hit in m[:3]: print('CONTEXT',name,pattern,repr(data[max(0,hit.start()-170):hit.end()+220]))
+            except Exception as e: print('FETCH_ERROR',name,str(e)[:160])
+          PY
+
       - name: Reconstruct source
         shell: bash
         run: |
