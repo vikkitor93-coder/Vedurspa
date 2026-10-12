@@ -14,6 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Inspect official Staðaspá HTML
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error --retry 2 --max-time 40 --dump-header /tmp/imo-headers.txt 'https://www.vedur.is/vedur/spar/stadaspar/' -o /tmp/imo.html
+          grep -iE 'x-frame-options|content-security-policy|content-type' /tmp/imo-headers.txt || true
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          class P(HTMLParser):
+              def handle_starttag(self,t,a):
+                  d=dict(a); signal=' '.join(str(d.get(k,'')) for k in ('id','class','src')).lower()
+                  if any(v in signal for v in ('map','spar','weather','station','forecast','spakort','tab','time')) or t in ('canvas','svg','iframe'):
+                      print(t,{k:v for k,v in d.items() if k in ('id','class','src','type')})
+          p=P();p.feed(open('/tmp/imo.html').read())
+          PY
+
       - name: Reconstruct source
         shell: bash
         run: |
