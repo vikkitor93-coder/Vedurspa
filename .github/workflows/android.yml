@@ -61,6 +61,28 @@ jobs:
           npm test
           npm run build
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build portable PC HTML launcher
+        shell: bash
+        working-directory: app
+        run: |
+          mkdir -p ../pc-bundle/web
+          cp -a dist/. ../pc-bundle/web/
+          (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
+          printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
+          printf 'Veðurspá 1.6.1 for Windows. Extract everything. Double-click Start Veðurspá.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.1.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.1.zip | tail -n 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-PC-HTML-1.6.1
+          path: Vedurspa-PC-HTML-1.6.1.zip
+          if-no-files-found: error
+
       - name: Generate Android project
         working-directory: app
         run: |
