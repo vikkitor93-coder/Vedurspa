@@ -75,6 +75,9 @@ jobs:
           base64 -d ci-src/v1612/overlay.tar.gz.b64 > /tmp/v1612-overlay.tar.gz
           echo '39ff0b1b7300e7cc592d61e184d55956fe2288d38ba3e6e445b9d6cee72522cb  /tmp/v1612-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/v1612-overlay.tar.gz -C app
+          base64 -d ci-src/v1612fix/overlay.tar.gz.b64 > /tmp/v1612fix-overlay.tar.gz
+          echo 'd024a02b57c4f233450f9ada35b62f9dd55d14f2a4a9ba73b936cb63ead6834b  /tmp/v1612fix-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1612fix-overlay.tar.gz -C app
 
       - uses: actions/setup-node@v4
         with:
