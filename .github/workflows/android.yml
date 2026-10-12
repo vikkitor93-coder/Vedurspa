@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -36,6 +38,8 @@ jobs:
           base64 -d /tmp/v16-overlay.tar.gz.b64 > /tmp/v16-overlay.tar.gz
           echo "5d79cce930abac99be6ca0cf620eb4fe9cb0bc432c21fbe4ee6f65909034188b  /tmp/v16-overlay.tar.gz" | sha256sum -c -
           tar -xzf /tmp/v16-overlay.tar.gz -C app
+          base64 -d ci-src/v161/overlay.tar.gz.b64 > /tmp/v161-overlay.tar.gz
+          tar -xzf /tmp/v161-overlay.tar.gz -C app
 
       - uses: actions/setup-node@v4
         with:
@@ -80,12 +84,12 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='7' versionName='1.6'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.apk
-          sha256sum Vedurspa-1.6.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='8' versionName='1.6.1'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.1.apk
+          sha256sum Vedurspa-1.6.1.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6
-          path: app/Vedurspa-1.6.apk
+          name: Vedurspa-1.6.1
+          path: app/Vedurspa-1.6.1.apk
           if-no-files-found: error
