@@ -197,6 +197,21 @@ jobs:
           test "$(node -p "require('./app/package.json').version")" = "1.6.24"
           node app/tests/v1624LiveClockRegression.test.mjs
 
+      - name: Apply Veðurspá 1.6.25 responsive aurora/clock styling
+        shell: bash
+        run: |
+          base64 -d ci-src/v1625/aurora-layout.patch.gz.b64 > /tmp/v1625.patch.gz
+          echo '52e8c303ad638123ed73c04d30c2b1c9a118fb7f517a33fcab65cd0fab9bc4aa  /tmp/v1625.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1625.patch.gz | patch --batch -p1 -d app
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app')
+          p=root/'package.json';s=p.read_text();s=s.replace('"version": "1.6.24"','"version": "1.6.25"');s=s.replace('node --import tsx tests/liveClock.test.mjs"', 'node --import tsx tests/liveClock.test.mjs && node --import tsx tests/v1625AuroraLayout.test.mjs"');p.write_text(s)
+          p=root/'package-lock.json';s=p.read_text().replace('"version": "1.6.24"','"version": "1.6.25"');p.write_text(s)
+          p=root/'ci/patch_android.py';s=p.read_text();s=s.replace("'versionCode 31'", "'versionCode 32'").replace("'versionName \"1.6.24\"'","'versionName \"1.6.25\"'");p.write_text(s)
+          PY
+          test "$(node -p "require('./app/package.json').version")" = "1.6.25"
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -240,14 +255,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='31' versionName='1.6.24'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.24.apk
-          sha256sum Vedurspa-1.6.24.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='32' versionName='1.6.25'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.25.apk
+          sha256sum Vedurspa-1.6.25.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.24
-          path: app/Vedurspa-1.6.24.apk
+          name: Vedurspa-1.6.25
+          path: app/Vedurspa-1.6.25.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -263,12 +278,12 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.24 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.24.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.24.zip | tail -n 1
+          printf 'Veðurspá 1.6.25 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.25.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.25.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.24
-          path: Vedurspa-PC-HTML-1.6.24.zip
+          name: Vedurspa-PC-HTML-1.6.25
+          path: Vedurspa-PC-HTML-1.6.25.zip
           if-no-files-found: error
