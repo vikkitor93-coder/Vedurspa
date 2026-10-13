@@ -126,6 +126,12 @@ jobs:
           code=p.read_text()
           assert code.count(original)==1, 'Station back label patch drift'
           p.write_text(code.replace(original,replacement))
+          test=Path('app/tests/v1621RegionControls.test.mjs')
+          testcode=test.read_text()
+          old=r"assert.match(station,/stationBackLabel=\\{stationBackLabel\\}/);"
+          new=r"assert.match(station,/stationBackLabel=\\{stationBackLabel === 'short' \\? 'short' : stationBackLabel === 'arrow' \\? 'arrow' : 'full'\\}/);"
+          assert testcode.count(old)==1,'Regression matcher drift'
+          test.write_text(testcode.replace(old,new))
           PY
 
       - uses: actions/setup-node@v4
