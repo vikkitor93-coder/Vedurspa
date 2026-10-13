@@ -118,8 +118,15 @@ jobs:
           tar -xzf /tmp/v1621-overlay.tar.gz -C app
           test "$(node -p "require('./app/package.json').version")" = "1.6.21"
           python3 app/ci/generate_official_map_focus.py
-
-
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/components/StationForecastPanel.tsx')
+          original='<OfficialStationMapFrame stationBackLabel={stationBackLabel}'
+          replacement="<OfficialStationMapFrame stationBackLabel={stationBackLabel === 'short' ? 'short' : stationBackLabel === 'arrow' ? 'arrow' : 'full'}"
+          code=p.read_text()
+          assert code.count(original)==1, 'Station back label patch drift'
+          p.write_text(code.replace(original,replacement))
+          PY
 
       - uses: actions/setup-node@v4
         with:
