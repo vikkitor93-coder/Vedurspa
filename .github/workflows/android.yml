@@ -235,6 +235,10 @@ jobs:
           needle='node --import tsx tests/v1625AuroraLayout.test.mjs"'
           assert needle in s
           p.write_text(s.replace(needle,'node --import tsx tests/v1625AuroraLayout.test.mjs && node --import tsx tests/v1626CompactAurora.test.mjs"'))
+          # Prior-version behavioral assertions stay, but their version pin evolves.
+          p=Path('app/tests/v1624LiveClockRegression.test.mjs')
+          s=p.read_text().replace("version, '1.6.25'","version, '1.6.26'").replace('taller two-row layout','compact single-row layout')
+          p.write_text(s)
           PY
           test "$(node -p "require('./app/package.json').version")" = "1.6.26"
 
