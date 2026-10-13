@@ -104,6 +104,13 @@ jobs:
           tar -xzf /tmp/v1616-overlay.tar.gz -C app
           python3 app/ci/generate_official_map_focus.py
 
+      - name: Preserve current release version assertions
+        shell: bash
+        run: |
+          base64 -d ci-src/v1616fix/overlay.tar.gz.b64 > /tmp/v1616fix-overlay.tar.gz
+          echo '81f862cf8bf4811a684f710a47b322f2200e5dab40ca3d2eccd2e82084131839  /tmp/v1616fix-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1616fix-overlay.tar.gz -C app
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
