@@ -110,6 +110,16 @@ jobs:
           base64 -d ci-src/v1616fix/overlay.tar.gz.b64 > /tmp/v1616fix-overlay.tar.gz
           echo '81f862cf8bf4811a684f710a47b322f2200e5dab40ca3d2eccd2e82084131839  /tmp/v1616fix-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/v1616fix-overlay.tar.gz -C app
+      - name: Apply authoritative 1.6.21 source changes
+        shell: bash
+        run: |
+          cat ci-src/v1621/part-* | base64 -d > /tmp/v1621-overlay.tar.gz
+          echo '2113c01e8e8654e4b1331618bb9b30797496d03b82c8bd771eb0bb04174c02a3  /tmp/v1621-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1621-overlay.tar.gz -C app
+          test "$(node -p "require('./app/package.json').version")" = "1.6.21"
+          python3 app/ci/generate_official_map_focus.py
+
+
 
       - uses: actions/setup-node@v4
         with:
@@ -154,14 +164,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='23' versionName='1.6.16'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.16.apk
-          sha256sum Vedurspa-1.6.16.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='28' versionName='1.6.21'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.21.apk
+          sha256sum Vedurspa-1.6.21.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.16
-          path: app/Vedurspa-1.6.16.apk
+          name: Vedurspa-1.6.21
+          path: app/Vedurspa-1.6.21.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -177,12 +187,12 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.16 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.16.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.16.zip | tail -n 1
+          printf 'Veðurspá 1.6.21 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.21.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.21.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.16
-          path: Vedurspa-PC-HTML-1.6.16.zip
+          name: Vedurspa-PC-HTML-1.6.21
+          path: Vedurspa-PC-HTML-1.6.21.zip
           if-no-files-found: error
