@@ -140,7 +140,19 @@ jobs:
           base64 -d ci-src/v1622/patch.gz.b64 > /tmp/v1622.patch.gz
           echo 'f1efcf35e58b283be07e75455fdb49375edd282a04f23e17fce0da14dd1cf3c4  /tmp/v1622.patch.gz' | sha256sum -c -
           gzip -dc /tmp/v1622.patch.gz > /tmp/v1622.patch
-          patch -p1 -d app < /tmp/v1622.patch
+          # Documentation in the CI reconstruction comes from an older baseline;
+          # only three text-only record files are skipped, never app/test source.
+          python3 - <<'PY'
+          from pathlib import Path
+          original=Path('/tmp/v1622.patch').read_text()
+          kept=[];skip=False
+          for line in original.splitlines(keepends=True):
+            if line.startswith('diff -ruN '):
+              skip=any(line.rstrip().endswith('/'+name) for name in ('AI_HANDOFF.md','BUILD_INFO.md','TEST_RESULTS.md'))
+            if not skip:kept.append(line)
+          Path('/tmp/v1622-code.patch').write_text(''.join(kept))
+          PY
+          patch -p1 -d app < /tmp/v1622-code.patch
           python3 app/ci/generate_official_map_focus.py
           test "$(node -p "require('./app/package.json').version")" = "1.6.22"
 
