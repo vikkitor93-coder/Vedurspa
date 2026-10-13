@@ -110,6 +110,92 @@ jobs:
           base64 -d ci-src/v1616fix/overlay.tar.gz.b64 > /tmp/v1616fix-overlay.tar.gz
           echo '81f862cf8bf4811a684f710a47b322f2200e5dab40ca3d2eccd2e82084131839  /tmp/v1616fix-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/v1616fix-overlay.tar.gz -C app
+      - name: Apply authoritative 1.6.21 source changes
+        shell: bash
+        run: |
+          cat ci-src/v1621/part-* | base64 -d > /tmp/v1621-overlay.tar.gz
+          echo '2113c01e8e8654e4b1331618bb9b30797496d03b82c8bd771eb0bb04174c02a3  /tmp/v1621-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1621-overlay.tar.gz -C app
+          test "$(node -p "require('./app/package.json').version")" = "1.6.21"
+          python3 app/ci/generate_official_map_focus.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/components/StationForecastPanel.tsx')
+          original='<OfficialStationMapFrame stationBackLabel={stationBackLabel}'
+          replacement="<OfficialStationMapFrame stationBackLabel={stationBackLabel === 'short' ? 'short' : stationBackLabel === 'arrow' ? 'arrow' : 'full'}"
+          code=p.read_text()
+          assert code.count(original)==1, 'Station back label patch drift'
+          p.write_text(code.replace(original,replacement))
+          test=Path('app/tests/v1621RegionControls.test.mjs')
+          testcode=test.read_text()
+          old=r"assert.match(station,/stationBackLabel=\{stationBackLabel\}/);"
+          new=r"assert.match(station,/stationBackLabel=\{stationBackLabel === 'short' \? 'short' : stationBackLabel === 'arrow' \? 'arrow' : 'full'\}/);"
+          assert testcode.count(old)==1,'Regression matcher drift'
+          test.write_text(testcode.replace(old,new))
+          PY
+
+      - name: Apply Veðurspá 1.6.22 UX and localization preparation
+        shell: bash
+        run: |
+          base64 -d ci-src/v1622/patch.gz.b64 > /tmp/v1622.patch.gz
+          echo 'f1efcf35e58b283be07e75455fdb49375edd282a04f23e17fce0da14dd1cf3c4  /tmp/v1622.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1622.patch.gz > /tmp/v1622.patch
+          # Documentation in the CI reconstruction comes from an older baseline;
+          # only three text-only record files are skipped, never app/test source.
+          python3 - <<'PY'
+          from pathlib import Path
+          original=Path('/tmp/v1622.patch').read_text()
+          kept=[];skip=False
+          for line in original.splitlines(keepends=True):
+            if line.startswith('diff -ruN '):
+              skip=any(line.rstrip().endswith('/'+name) for name in ('AI_HANDOFF.md','BUILD_INFO.md','TEST_RESULTS.md'))
+            if not skip:kept.append(line)
+          Path('/tmp/v1622-code.patch').write_text(''.join(kept))
+          PY
+          patch -p1 -d app < /tmp/v1622-code.patch
+          python3 app/ci/generate_official_map_focus.py
+          test "$(node -p "require('./app/package.json').version")" = "1.6.22"
+
+      - name: Update component lifecycle mocks for new imports
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/stationKeepAlive.test.mjs')
+          s=p.read_text()
+          anchor="'../utils/officialStationMap':{openOriginalStationMap:async()=>{}}"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+",'lucide-react':{ArrowLeft:()=>null},'../i18n':{t:key=>key==='station.iceland'?'Ísland':'Aftur til Íslands'}")
+          p.write_text(s)
+          PY
+
+      - name: Apply Veðurspá 1.6.23 cleanup source
+        shell: bash
+        run: |
+          base64 -d ci-src/v1623/overlay.tar.gz.b64 > /tmp/v1623-overlay.tar.gz
+          echo 'd3c0531d708b9eef04df388fa067ed611996a2f0d4105b2d0631ef9dae1c2875  /tmp/v1623-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1623-overlay.tar.gz -C app
+          rm -f app/public/history-feature.js
+          test "$(node -p "require('./app/package.json').version")" = "1.6.23"
+          node app/tests/v1623Cleanup.test.mjs
+
+      - name: Apply version-agnostic regression test fix
+        shell: bash
+        run: |
+          base64 -d ci-src/v1623/testfix.tar.gz.b64 > /tmp/v1623testfix.tar.gz
+          echo '48c5d8dabfcead3c2b673963f6a310cbca2a40a662898b784ed7a7ba8f083415  /tmp/v1623testfix.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1623testfix.tar.gz -C app
+          node app/tests/v1616Regression.test.mjs
+
+      - name: Apply Veðurspá 1.6.24 live-clock and UI compatibility patch
+        shell: bash
+        run: |
+          base64 -d ci-src/v1624/live-clock.patch.gz.b64 > /tmp/v1624.patch.gz
+          echo '3074b849baa915075ac1508924c9aaaa335170554b599320c4292430921028a1  /tmp/v1624.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1624.patch.gz > /tmp/v1624.patch
+          patch --batch -p1 -d app < /tmp/v1624.patch
+          test "$(node -p "require('./app/package.json').version")" = "1.6.24"
+          node app/tests/v1624LiveClockRegression.test.mjs
 
       - uses: actions/setup-node@v4
         with:
@@ -154,14 +240,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='23' versionName='1.6.16'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.16.apk
-          sha256sum Vedurspa-1.6.16.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='31' versionName='1.6.24'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.24.apk
+          sha256sum Vedurspa-1.6.24.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.16
-          path: app/Vedurspa-1.6.16.apk
+          name: Vedurspa-1.6.24
+          path: app/Vedurspa-1.6.24.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -177,12 +263,12 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.16 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.16.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.16.zip | tail -n 1
+          printf 'Veðurspá 1.6.24 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.24.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.24.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.16
-          path: Vedurspa-PC-HTML-1.6.16.zip
+          name: Vedurspa-PC-HTML-1.6.24
+          path: Vedurspa-PC-HTML-1.6.24.zip
           if-no-files-found: error
