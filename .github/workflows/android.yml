@@ -178,11 +178,11 @@ jobs:
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
           printf 'Veðurspá 1.6.16 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.15.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.15.zip | tail -n 1
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.16.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.16.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.15
-          path: Vedurspa-PC-HTML-1.6.15.zip
+          name: Vedurspa-PC-HTML-1.6.16
+          path: Vedurspa-PC-HTML-1.6.16.zip
           if-no-files-found: error
