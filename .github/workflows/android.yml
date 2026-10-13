@@ -156,6 +156,19 @@ jobs:
           python3 app/ci/generate_official_map_focus.py
           test "$(node -p "require('./app/package.json').version")" = "1.6.22"
 
+      - name: Update component lifecycle mocks for new imports
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/stationKeepAlive.test.mjs')
+          s=p.read_text()
+          anchor="'../utils/officialStationMap':{openOriginalStationMap:async()=>{}}"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+",'lucide-react':{ArrowLeft:()=>null},'../i18n':{t:key=>key==='station.iceland'?'Ísland':'Aftur til Íslands'}")
+          p.write_text(s)
+          PY
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
