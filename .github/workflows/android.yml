@@ -217,7 +217,25 @@ jobs:
         run: |
           base64 -d ci-src/v1626/compact-aurora.patch.gz.b64 > /tmp/v1626.patch.gz
           echo '961c7b3822e69e201896f8333d48c1148eb87e9f508c831d1279beeff5af432b  /tmp/v1626.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/v1626.patch.gz | patch --batch -p1 -d app
+          gzip -dc /tmp/v1626.patch.gz > /tmp/v1626.patch
+          # The rebuilt baseline modifies this generator's previous version token
+          # differently from the standalone complete-source ZIP.
+          sed '/^--- a\/ci\/patch_android.py/,$d' /tmp/v1626.patch | patch --batch -p1 -d app
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/ci/patch_android.py')
+          s=p.read_text()
+          assert "'versionCode 32'" in s and "'versionName \"1.6.25\"'" in s
+          s=s.replace("'versionCode 32'","'versionCode 33'").replace("'versionName \"1.6.25\"'","'versionName \"1.6.26\"'")
+          # Preserve any original allow-list and accept the newest upgrade versions.
+          s=s.replace(r"|31)\b",r"|31|32|33)\b").replace(r"1\.6\.24)",r"1\.6\.24|1\.6\.25|1\.6\.26)")
+          p.write_text(s)
+          p=Path('app/package.json')
+          s=p.read_text()
+          needle='node --import tsx tests/v1625AuroraLayout.test.mjs"'
+          assert needle in s
+          p.write_text(s.replace(needle,'node --import tsx tests/v1625AuroraLayout.test.mjs && node --import tsx tests/v1626CompactAurora.test.mjs"'))
+          PY
           test "$(node -p "require('./app/package.json').version")" = "1.6.26"
 
       - uses: actions/setup-node@v4
