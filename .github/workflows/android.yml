@@ -179,6 +179,14 @@ jobs:
           test "$(node -p "require('./app/package.json').version")" = "1.6.23"
           node app/tests/v1623Cleanup.test.mjs
 
+      - name: Apply version-agnostic regression test fix
+        shell: bash
+        run: |
+          base64 -d ci-src/v1623/testfix.tar.gz.b64 > /tmp/v1623testfix.tar.gz
+          echo '48c5d8dabfcead3c2b673963f6a310cbca2a40a662898b784ed7a7ba8f083415  /tmp/v1623testfix.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1623testfix.tar.gz -C app
+          node app/tests/v1616Regression.test.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
