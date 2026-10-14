@@ -909,7 +909,7 @@ jobs:
               if 'Actual per-severity warning count' in line or 'Actual warnings are counted per severity' in line:
                   updated.append("assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warning counts remain in accessibility summary');")
               else: updated.append(line)
-          p.write_text('\\n'.join(updated)+'\\n')
+          p.write_text(chr(10).join(updated)+chr(10))
           (root/'RELEASE_NOTES_1.6.35.md').write_text("""# Veðurspá 1.6.35 — Update progress and warning header refinement
           
           - Android app updater shows download percentage, downloaded/total MB and an indeterminate loading bar when size is unknown.
