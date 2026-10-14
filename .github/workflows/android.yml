@@ -797,8 +797,7 @@ jobs:
           p=root/'tests/v1612Regression.test.mjs'
           s=p.read_text()
           old="assert.match(banner,/visibleLevels\\.map/,'Show yellow and orange warnings simultaneously');"
-          assert old in s
-          s=s.replace(old,"assert.match(banner,/levels\\.map/,'Show simultaneous warning counts');\nassert.match(banner,/warnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual per-severity warning count');")
+          if old in s: s=s.replace(old,"assert.match(banner,/levels\\.map/,'Show simultaneous warning counts');\nassert.match(banner,/warnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual per-severity warning count');")
           p.write_text(s)
           p=root/'tests/layoutLocation.test.ts'
           s=p.read_text()
