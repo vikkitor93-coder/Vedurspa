@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.34-warnings-aurora-slider]
+    branches: [main, ci-build-vedurspa-1.6.35-progress-header]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -856,6 +856,68 @@ jobs:
           node app/tests/v1634WarningAuroraSlider.test.mjs
           test "$(node -p "require('./app/package.json').version")" = '1.6.34'
 
+      - name: Apply Veðurspá 1.6.35 updater progress and warning header patch
+        shell: bash
+        run: |
+          test "$(node -p "require('./app/package.json').version")" = '1.6.34'
+          echo '78e63847d03d73e925cdb19fe5914188ae29b508589b8b624054e8256d8dd4a9  ci-src/v1635/ui-progress-header.patch.xz' | sha256sum -c -
+          xzcat ci-src/v1635/ui-progress-header.patch.xz | patch --batch -p1 -d app
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          for name in ('package.json','package-lock.json'):
+              p=root/name
+              data=json.loads(p.read_text())
+              assert data['version']=='1.6.34',(name,data['version'])
+              data['version']='1.6.35'
+              if name=='package-lock.json':
+                  data['packages']['']['version']='1.6.35'
+              else:
+                  script=data['scripts']['test']
+                  assert 'tests/v1635UpdateProgress.test.tsx' not in script
+                  data['scripts']['test']=script+' && node --import tsx tests/v1635UpdateProgress.test.tsx && node tests/v1635HeaderWarning.test.mjs'
+              p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          p=root/'ci/patch_android.py'
+          s=p.read_text()
+          assert 'versionCode 41' in s and 'versionName "1.6.34"' in s
+          s=s.replace('versionCode 41','versionCode 42').replace('versionName "1.6.34"','versionName "1.6.35"')
+          s=s.replace('|40|41)', '|40|41|42)')
+          s=s.replace(r'1\.6\.34)',r'1\.6\.34|1\.6\.35)')
+          p.write_text(s)
+          for p in (root/'tests').rglob('*'):
+              if p.suffix not in ('.mjs','.ts','.tsx'): continue
+              s=p.read_text()
+              s=s.replace("'1.6.34'","'1.6.35'").replace('v1.6.34','v1.6.35')
+              s=s.replace('versionCode 41','versionCode 42')
+              s=s.replace('versionName "1\\.'+'6\\.'+'34"','versionName "1\\.'+'6\\.'+'35"')
+              p.write_text(s)
+          (root/'RELEASE_NOTES_1.6.35.md').write_text("""# Veðurspá 1.6.35 — Update progress and warning header refinement
+          
+          - Android app updater shows download percentage, downloaded/total MB and an indeterminate loading bar when size is unknown.
+          - Weekday in the header wraps next to the warning icon and date.
+          - No warning counts in the header. A single red, orange or yellow icon pulses in the highest active severity color only when relevant warnings exist.
+          - Existing weather maps, alerts, forecast logic, themes, guides and saved settings are unchanged.
+          """)
+          (root/'AI_HANDOFF.md').write_text("""# AI_HANDOFF — Veðurspá 1.6.35
+          
+          Purpose/state: Iceland weather/aurora app on Android Capacitor 6 and Windows portable Go launcher, version 1.6.35, Android versionCode 42, package is.viktor.vedurspa. Complete source ZIP from hosted CI is authoritative. Base version is 1.6.34.
+          Architecture: React/TypeScript/Vite src/App.tsx, src/components/CompactHeader.tsx, WarningBanner.tsx, UpdateDownloadProgress.tsx, AppSettingsPanel.tsx, src/utils/androidUpdater.ts, src/utils/warnings.ts, src/index.css; ci/patch_android.py Android metadata/native bridge, ci Go Windows localhost launcher. .github/workflows/build-release.yml hosts the build.
+          Contracts/versions: Capacitor 6, Android DownloadManager status/byte counts, saved app settings and locale/theme/guide data, ISO forecast timestamps, warning levels green/yellow/orange/red/unknown, vedur.is provider data. No API, schema, IPC or saved data format change. No personal telemetry.
+          New: download progress bar 0–99% until APK verification, fallback total from GitHub release asset and indeterminate animation; header weekday wraps; a single severity-only warning icon (no visible numeric counts) pulses red/orange/yellow only for active alert levels; reduced-motion disables pulse. ARIA label retains counts. No map vertical budget changed.
+          Build/test: Node 20 npm install --no-audit --no-fund && npm run lint && npm test && npm run build. Android SDK/Java17: npx cap add android && npx cap sync android && python3 ci/patch_android.py && (cd android && ./gradlew assembleDebug); signer and versionCode42 required. Windows Go1.22 build using ci/*.go. Source ZIP excludes node_modules/dist/android/caches.
+          Dev-mode: Settings, tap version seven times. Tests: tests/v1635HeaderWarning.test.mjs, tests/v1635UpdateProgress.test.tsx and full existing suite, native signing, Windows asset comparison. Known risks: verify narrow phone date wrapping, colored warning pulse, download bar with real network; accessibility reduced motion.
+          Rollback: checkout v1.6.34 workflow/source. Android downgrades may require uninstall and backup due platform restrictions.
+          Exact next action: verify hosted CI run, three published release assets and APK/PC shared assets; on-phone QA next.
+          """)
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.35\nAndroid versionCode 42; signed APK + Windows + source built by GitHub Actions. Consult CI run for verification.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.35\nTargeted warning/date/progress checks and full suite run in GitHub Actions; verify final job results.\n')
+          PY
+          python3 -m py_compile app/ci/patch_android.py
+          test "$(node -p "require('./app/package.json').version")" = '1.6.35'
+          node app/tests/v1635HeaderWarning.test.mjs
+          node app/tests/v1634WarningAuroraSlider.test.mjs
+
       - name: Install dependencies
         working-directory: app
         run: npm install --no-audit --no-fund
@@ -890,14 +952,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='41' versionName='1.6.34'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.34.apk
-          sha256sum Vedurspa-1.6.34.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='42' versionName='1.6.35'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.35.apk
+          sha256sum Vedurspa-1.6.35.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.34
-          path: app/Vedurspa-1.6.34.apk
+          name: Vedurspa-1.6.35
+          path: app/Vedurspa-1.6.35.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -914,17 +976,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.34 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.34.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.34.zip | tail -n 1
+          printf 'Veðurspá 1.6.35 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.35.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.35.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.34
-          path: Vedurspa-PC-HTML-1.6.34.zip
+          name: Vedurspa-PC-HTML-1.6.35
+          path: Vedurspa-PC-HTML-1.6.35.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.34 source ZIP
+      - name: Package authoritative Veðurspá 1.6.35 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -934,38 +996,38 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.34-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.35-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp','.apk')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.34-complete-source.zip | tail -1
-          if unzip -Z1 Vedurspa-1.6.34-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
+          unzip -t Vedurspa-1.6.35-complete-source.zip | tail -1
+          if unzip -Z1 Vedurspa-1.6.35-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.34-source
-          path: Vedurspa-1.6.34-complete-source.zip
+          name: Vedurspa-1.6.35-source
+          path: Vedurspa-1.6.35-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.34 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.34-warnings-aurora-slider' && github.event_name == 'push'
+      - name: Publish verified v1.6.35 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.35-warnings-aurora-slider' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.34 >/dev/null 2>&1; then
-            gh release upload v1.6.34 app/Vedurspa-1.6.34.apk Vedurspa-PC-HTML-1.6.34.zip Vedurspa-1.6.34-complete-source.zip --clobber
+          if gh release view v1.6.35 >/dev/null 2>&1; then
+            gh release upload v1.6.35 app/Vedurspa-1.6.35.apk Vedurspa-PC-HTML-1.6.35.zip Vedurspa-1.6.35-complete-source.zip --clobber
           else
-            gh release create v1.6.34 \
-              app/Vedurspa-1.6.34.apk \
-              Vedurspa-PC-HTML-1.6.34.zip \
-              Vedurspa-1.6.34-complete-source.zip \
+            gh release create v1.6.35 \
+              app/Vedurspa-1.6.35.apk \
+              Vedurspa-PC-HTML-1.6.35.zip \
+              Vedurspa-1.6.35-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.34 — Aurora clarity, warnings and slider time" \
-              --notes-file app/RELEASE_NOTES_1.6.34.md \
+              --title "Veðurspá 1.6.35 — Warning header and updater progress" \
+              --notes-file app/RELEASE_NOTES_1.6.35.md \
               --latest
           fi
-          gh release view v1.6.34 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.35 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
