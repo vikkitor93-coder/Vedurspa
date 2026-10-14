@@ -577,6 +577,20 @@ jobs:
           assert "ui('back',language)" in s and "ui('next',language)" in s
           p.write_text(s.replace("ui('back',language)","ui('back',language as AppLanguage)").replace("ui('next',language)","ui('next',language as AppLanguage)"))
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/v1622UxI18n.test.mjs')
+          s=p.read_text()
+          a=s.index('for(const language of ')
+          b=s.index('assert.equal(runInNewContext(',a)
+          revised="""for(const language of ['is','en','pl','sv','nb','zh-Hans','ja','de','fr'])assert.ok(i18n.includes('tag:"'+language+'"'),language);
+          assert.match(i18n,/status:"active"/);
+          assert.match(i18n,/UI_TEXT:Record<AppLanguage,Record<UiKey,string>>/);
+          assert.match(i18n,/SOURCE_TEXT\[key\]/);
+          assert.match(read('docs/i18n/TRANSLATION_PLAN.md'),/official weather warnings|official warnings/i);
+          """
+          p.write_text(s[:a]+revised+s[b:])
+          PY
           test "$(node -p "require('./app/package.json').version")" = "1.6.31"
           node app/tests/v1631LanguageGuide.test.mjs
           node app/tests/v1627Updater.test.mjs
