@@ -384,7 +384,7 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.27-complete-source.zip','w',ZIP_DEFLATED) as z:
+          with ZipFile('Vedurspa-1.6.27-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp')):
                       continue
