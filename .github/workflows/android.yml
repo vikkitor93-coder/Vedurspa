@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.30-final-icon-ui]
+    branches: [main, ci-build-vedurspa-1.6.31-guides-languages]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -532,6 +532,38 @@ jobs:
           PY
           node app/tests/v1628UpdateSmoke.test.mjs
 
+      - name: Apply Veðurspá 1.6.31 languages and illustrated guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d ci-src/v1631/source.patch.xz.b64 > /tmp/v1631.patch.xz
+          echo '3bca6a68fe9ec7bb0fb56b901bf9cf6cb94da6138363dd9cda2308378939546c  /tmp/v1631.patch.xz' | sha256sum -c -
+          xz -dc /tmp/v1631.patch.xz > /tmp/v1631.patch
+          patch --batch -p1 -d app < /tmp/v1631.patch
+          base64 -d ci-src/v1631/guide-pictures.tar.xz.b64 > /tmp/v1631-guide.tar.xz
+          echo 'bcc5b3e33228ccf9572712a2d6856ad4f5e1ada5088b9fe0eaf74e43829802b8  /tmp/v1631-guide.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/v1631-guide.tar.xz -C app
+          test "$(node -p "require('./app/package.json').version")" = '1.6.31'
+          node app/tests/v1631LanguageGuide.test.mjs
+          python3 -m py_compile app/ci/patch_android.py
+          cat > app/AI_HANDOFF.md <<'HANDOFF'
+          # AI_HANDOFF — Veðurspá 1.6.31
+
+          Purpose/state: Iceland weather app for Android and Windows (React 19, Vite, TypeScript, Capacitor 6, Windows Go launcher). This is 1.6.31, Android package is.viktor.vedurspa, versionCode 38. Complete source ZIP is authoritative.
+
+          Architecture: src/App.tsx owns modes, data, timeline, guide and first-launch state. src/i18n/index.ts contains supported languages and typed interface dictionary. src/components/GuidedTour.tsx contains spotlight steps, illustration routing and completion storage key vedurspa-guide-v1-complete. public/guide/{weather,aurora,station,all4}.webp contain mode illustrations. src/components/AppSettingsPanel.tsx offers language choice, per-mode/full help and compact native updater. src/components/CompactHeader.tsx exposes Help. src/utils/appSettings.ts stores language in existing versioned settings. Android bridge: src/utils/androidUpdater.ts -> native-src/is/viktor/vedurspa/AppUpdaterPlugin.java. ci/pc-server.go is Windows web launcher.
+
+          Contracts: Existing forecast provider, caching, warnings, location, timeline, native notification/update IPC, data formats, saved maps and settings preserved. No migrations; old settings default to Icelandic language. Official Icelandic warning/provider prose is not machine translated. Translation coverage is interface chrome and guide copy, not every weather-data label. Nine languages: is,en,pl,sv,nb,de,fr,zh-Hans,ja.
+
+          Dependencies/build: npm install; npm run lint; npm test; npm run build; Python Pillow for launcher icons; npx cap add android; npx cap sync android; python3 ci/patch_android.py; Gradle assembleDebug. Verify signature/cert and versionCode 38/versionName 1.6.31. Windows: cd ci && go test ./... && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build. Use .github/workflows/build-release.yml for hosted build. Dev mode: Settings, tap version seven times; original diagnostics preserved.
+
+          Latest changes/tests: New nine-language selector, illustrated full first-run walkthrough, skip/back/next/restart and per-tab help with dimming/real element spotlight; targeted tests tests/v1631LanguageGuide.test.mjs. GitHub Actions performs full TypeScript/tests, compiled Android signing and Windows bundle verification. Phone-size UX and translated copy need human review. Prior 1.6.30 is rollback; installing older APK may require uninstall/data backup because Android disallows version downgrade. Do not change package ID or debug signing key.
+
+          Exact next action: Install signed 1.6.31 APK over 1.6.30; test onboarding skip/reopen in each language, Android Back, permissions, four weather tabs; log any screen-size or translation issues before next version.
+          HANDOFF
+          printf '# Veðurspá 1.6.31\nAndroid versionCode 38, versionName 1.6.31. CI signs and verifies artifacts.\n' > app/BUILD_INFO.md
+          printf '# Veðurspá 1.6.31 tests\nGitHub Actions verifies TypeScript, tests, web build, Android certificate/version and PC build; see run logs.\n' > app/TEST_RESULTS.md
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -575,14 +607,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='37' versionName='1.6.30'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.30.apk
-          sha256sum Vedurspa-1.6.30.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='38' versionName='1.6.31'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.31.apk
+          sha256sum Vedurspa-1.6.31.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.30
-          path: app/Vedurspa-1.6.30.apk
+          name: Vedurspa-1.6.31
+          path: app/Vedurspa-1.6.31.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -599,17 +631,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.30 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.30.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.30.zip | tail -n 1
+          printf 'Veðurspá 1.6.31 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.31.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.31.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.30
-          path: Vedurspa-PC-HTML-1.6.30.zip
+          name: Vedurspa-PC-HTML-1.6.31
+          path: Vedurspa-PC-HTML-1.6.31.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.30 source ZIP
+      - name: Package authoritative Veðurspá 1.6.31 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -619,37 +651,37 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.30-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.31-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.30-complete-source.zip | tail -1
+          unzip -t Vedurspa-1.6.31-complete-source.zip | tail -1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.30-source
-          path: Vedurspa-1.6.30-complete-source.zip
+          name: Vedurspa-1.6.31-source
+          path: Vedurspa-1.6.31-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.30 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.30-final-icon-ui' && github.event_name == 'push'
+      - name: Publish verified v1.6.31 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.31-final-icon-ui' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.30 >/dev/null 2>&1; then
-            gh release upload v1.6.30 app/Vedurspa-1.6.30.apk Vedurspa-PC-HTML-1.6.30.zip Vedurspa-1.6.30-complete-source.zip --clobber
+          if gh release view v1.6.31 >/dev/null 2>&1; then
+            gh release upload v1.6.31 app/Vedurspa-1.6.31.apk Vedurspa-PC-HTML-1.6.31.zip Vedurspa-1.6.31-complete-source.zip --clobber
           else
-            gh release create v1.6.30 \
-              app/Vedurspa-1.6.30.apk \
-              Vedurspa-PC-HTML-1.6.30.zip \
-              Vedurspa-1.6.30-complete-source.zip \
+            gh release create v1.6.31 \
+              app/Vedurspa-1.6.31.apk \
+              Vedurspa-PC-HTML-1.6.31.zip \
+              Vedurspa-1.6.31-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.30 — Approved icon and compact updater" \
-              --notes-file app/RELEASE_NOTES_1.6.30.md \
+              --title "Veðurspá 1.6.31 — Languages and illustrated guides" \
+              --notes-file app/RELEASE_NOTES_1.6.31.md \
               --latest
           fi
-          gh release view v1.6.30 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.31 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
