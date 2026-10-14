@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.29-native-updater]
+    branches: [main, ci-build-vedurspa-1.6.30-final-icon-ui]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -421,6 +421,104 @@ jobs:
           node app/tests/v1629NativeUpdate.test.mjs
           test "$(node -p "require('./app/package.json').version")" = "1.6.29"
 
+      - name: Apply Veðurspá 1.6.30 approved icon and simplified updater
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/assets/app-icons
+          cp ci-src/v1630/final-approved.webp app/assets/app-icons/build-master.webp
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          for name in ('package.json','package-lock.json'):
+           p=root/name; o=json.loads(p.read_text())
+           assert o['version']=='1.6.29', (name,o['version'])
+           o['version']='1.6.30'
+           if name=='package-lock.json':o['packages']['']['version']='1.6.30'
+           else:o['scripts']['test']+=' && node tests/v1630SimpleUpdate.test.mjs'
+           p.write_text(json.dumps(o,indent=2,ensure_ascii=False)+'\n')
+          p=root/'ci/patch_android.py'; s=p.read_text()
+          assert "'versionCode 36'" in s and "'versionName \"1.6.29\"'" in s
+          s=s.replace("'versionCode 36'","'versionCode 37'").replace("'versionName \"1.6.29\"'","'versionName \"1.6.30\"'")
+          s=s.replace('|35|36)','|35|36|37)').replace(r'1\.6\.29)',r'1\.6\.29|1\.6\.30)')
+          p.write_text(s)
+          p=root/'ci/generate_app_icons.py';s=p.read_text()
+          assert "'build-master.jpg'" in s and "icon.putalpha(mask)" in s
+          s=s.replace("'build-master.jpg'","'build-master.webp'")
+          s=s.replace("mask = Image.new('L', (512, 512), 0)\nImageDraw.Draw(mask).rounded_rectangle((0, 0, 511, 511), radius=60, fill=255)\nicon.putalpha(mask)\n","")
+          p.write_text(s)
+          p=root/'src/components/AppSettingsPanel.tsx';s=p.read_text()
+          s=s.replace('Download, ExternalLink, RefreshCw','Download, RefreshCw')
+          s=s.replace('import { CURRENT_RELEASE_NOTES } from "../utils/currentReleaseNotes";\n','')
+          s=s.replace('  const [updateOpen, setUpdateOpen] = useState(false);\n','')
+          effect="""  useEffect(() => {
+              if (!updateOpen || releaseInfo || updateLoading || updateError) return;
+              void refreshRelease();
+              // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [updateOpen]);
+          
+          """
+          assert effect in s
+          s=s.replace(effect,'')
+          start=s.index('        <section className="rounded-xl border border-cyan-900/60 bg-cyan-950/25 p-3">')
+          end=s.index('        {settings.developerMode && <section',start)
+          s=s[:start]+"        <section id=\"settings-update\" className=\"rounded-xl border border-cyan-900/60 bg-cyan-950/25 p-3 space-y-2\">\n          <div className=\"flex items-center gap-3\">\n            <RefreshCw className=\"w-5 h-5 shrink-0 text-cyan-300\" />\n            <div className=\"flex-1 min-w-0\">\n              <div className=\"font-bold text-cyan-100\">Uppfærslur</div>\n              <div className=\"text-sm text-cyan-200\">Útgáfa {appVersion}</div>\n              {updateStatus?.kind === 'newer' && <div className=\"text-xs font-bold text-emerald-300\">Ný útgáfa {releaseInfo?.version}</div>}\n            </div>\n          </div>\n          {updateError && <p role=\"alert\" className=\"text-sm text-rose-200\">{updateError}</p>}\n          {nativeStatus.state === 'error' && <p role=\"alert\" className=\"text-sm text-rose-200\">{nativeStatus.message || 'Uppfærsla mistókst.'}</p>}\n          {nativeStatus.state === 'downloading' && <p role=\"status\" className=\"text-sm text-cyan-200\">Sæki uppfærslu í bakgrunni…</p>}\n          {nativeStatus.state === 'permission_required' ? (\n            <button type=\"button\" onClick={() => void grantInstallPermission()} className=\"w-full min-h-12 rounded-xl bg-amber-600 text-white font-bold\">Veita uppsetningarleyfi</button>\n          ) : nativeStatus.state === 'downloaded' && supportsNativeUpdates() ? (\n            <button type=\"button\" onClick={() => void promptInstall()} className=\"w-full min-h-12 rounded-xl bg-emerald-700 text-white font-bold\">Opna uppsetningu</button>\n          ) : nativeStatus.state === 'install_prompt' ? (\n            <p role=\"status\" className=\"text-sm text-emerald-200\">Staðfestu uppfærsluna í Android.</p>\n          ) : updateStatus?.kind === 'newer' && supportsNativeUpdates() && apkAsset ? (\n            <button id=\"btn-install-update-now\" type=\"button\" onClick={() => void installNativeUpdate()} disabled={nativeBusy || nativeStatus.state === 'downloading'} className=\"w-full min-h-12 rounded-xl bg-emerald-600 text-white font-black disabled:opacity-60\">Uppfæra í {releaseInfo?.version}</button>\n          ) : updateStatus?.kind === 'newer' && !supportsNativeUpdates() && pcAsset ? (\n            <button id=\"btn-install-update-now\" type=\"button\" onClick={() => openExternal(pcAsset.browser_download_url)} className=\"w-full min-h-12 rounded-xl bg-cyan-700 text-white font-bold\">Sækja uppfærslu {releaseInfo?.version}</button>\n          ) : (\n            <button id=\"btn-check-updates\" type=\"button\" onClick={() => void refreshRelease()} disabled={updateLoading} className=\"w-full min-h-12 rounded-xl bg-cyan-700 text-white font-bold disabled:opacity-60\">{updateLoading ? 'Athuga…' : 'Athuga uppfærslu'}</button>\n          )}\n        </section>\n\n"+s[end:]
+          assert 'updateOpen' not in s and 'Hvað er nýtt' not in s and 'Opna útgáfu á GitHub' not in s
+          p.write_text(s)
+          p=root/'tests/v1627Updater.test.mjs';s=p.read_text()
+          s=s.replace('/Setja upp uppfærslu núna/','/Uppfæra í/')
+          s=s.replace("assert.match(panel, /Hvað er nýtt/, 'should retain release notes');","assert.doesNotMatch(panel, /Hvað er nýtt/, 'no patch notes in update panel');")
+          p.write_text(s)
+          p=root/'tests/v1627UpdaterBehavior.test.mjs';s=p.read_text().replace('assert.match(app,/CURRENT_RELEASE_NOTES/);','assert.doesNotMatch(app,/CURRENT_RELEASE_NOTES|Opna útgáfu á GitHub/);')
+          p.write_text(s)
+          p=root/'tests/v1629NativeUpdate.test.mjs';s=p.read_text().replace('/Setja upp uppfærslu núna/','/Uppfæra í/')
+          p.write_text(s)
+          p=root/'tests/v1628UpdateSmoke.test.mjs';s=p.read_text().replace('1.6.29','1.6.30').replace('versionCode 36','versionCode 37')
+          p.write_text(s)
+          for name in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs'):
+           p=root/'tests'/name;p.write_text(p.read_text().replace("'1.6.29'","'1.6.30'"))
+          (root/'tests/v1630SimpleUpdate.test.mjs').write_text("""import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const read = path => readFileSync(new URL(path,import.meta.url),'utf8');
+          const s=read('../src/components/AppSettingsPanel.tsx');
+          assert.match(s,/id="settings-update"/);
+          assert.match(s,/Útgáfa \{appVersion\}/);
+          assert.match(s,/id="btn-check-updates"/);
+          assert.match(s,/Uppfæra í \{releaseInfo\?\.version\}/);
+          assert.match(s,/startAndroidUpdate|getAndroidUpdateStatus/);
+          assert.match(s,/requestAndroidInstallPermission/);
+          assert.doesNotMatch(s,/updateOpen|setUpdateOpen|<details|<summary|Hvað er nýtt|Opna útgáfu á GitHub/);
+          const gen=read('../ci/generate_app_icons.py');
+          assert.match(gen,/build-master\.webp/);
+          assert.doesNotMatch(gen,/putalpha\(mask\)/);
+          const patch=read('../ci/patch_android.py');
+          assert.match(patch,/versionCode 37/);
+          assert.match(patch,/versionName "1\.6\.30"/);
+          console.log('Veðurspá 1.6.30 compact UI, update installer and icon: PASS');
+          """)
+          (root/'RELEASE_NOTES_1.6.30.md').write_text("""# Veðurspá 1.6.30
+          - Approved enlarged weather icon with filled dark corners, rain and snow.
+          - Settings shows version and one context-sensitive update button.
+          - Removed dropdown, patch notes and GitHub link from settings; preserved native install and PC download.
+          - Weather data, map behavior, caches and saved settings unchanged.
+          """)
+          (root/'AI_HANDOFF.md').write_text("""# AI_HANDOFF — Veðurspá 1.6.30
+          Purpose: Iceland weather app for Android and Windows. Current version 1.6.30, app ID is.viktor.vedurspa, Android versionCode 37. Architecture: React/Vite in src, src/App.tsx main orchestration, src/components/AppSettingsPanel.tsx settings; src/utils/appUpdate.ts release discovery and src/utils/androidUpdater.ts bridging native-src/is/viktor/vedurspa/AppUpdaterPlugin.java; native Java notifications, original station map. Windows Go launcher ci/pc-server.go; official forecast provider adapters/caches unchanged. APIs/configs/data formats and settings retained; no schema migration.
+          Changes: high-visibility approved square weather icon in assets/app-icons/build-master.webp, regenerated via ci/generate_app_icons.py into web, adaptive Android and Windows assets; removed rounded-corner alpha mask (Android launcher handles shape). Settings update is compact: installed version and context-sensitive check/update button; no dropdown, patch notes or GitHub UI link. Android download/signing check/install permission preserved, Windows release download preserved.
+          Dependencies/config: Node 20, npm, Capacitor 6, Java 17/Android SDK, Go 1.22, Python Pillow, package-lock.json, capacitor.config.json, existing Android debug signing keystore. Protocols and saved formats unchanged. Build: npm install; npm run lint; npm test; npm run build; python3 ci/generate_app_icons.py; npx cap add android; npx cap sync android; python3 ci/patch_android.py; android/gradlew assembleDebug; verify APK signature/versionCode37/versionName1.6.30. Windows: go test ./... then GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build; bundle dist under web/. Dev mode: Settings -> tap version seven times for diagnostics. Tests: new v1630SimpleUpdate.test.mjs plus unchanged provider/cache/maps/native suite; consult GitHub Actions logs for results.
+          Risks: physical Android masking/install confirmation untested; GitHub Releases must remain public with APK/PC asset names; native updater cannot silently bypass Android consent. Rollback: v1.6.29 signed build, but Android version downgrade may require uninstall and could lose local data. Next: run CI on ci-build-vedurspa-1.6.30-final-icon-ui and verify release files, then test upgrade on device.
+          """)
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.30\nAndroid versionCode 37. CI is source of truth for signing and build checks.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.30 tests\nCI runs typecheck, all regression tests, web build, Android build/signature and Windows build. See workflow logs.\n')
+          PY
+          python3 app/ci/generate_app_icons.py
+          test "$(node -p "require('./app/package.json').version")" = '1.6.30'
+          node app/tests/v1630SimpleUpdate.test.mjs
+          node app/tests/v1627Updater.test.mjs
+          node app/tests/v1629NativeUpdate.test.mjs
+          python3 -m py_compile app/ci/patch_android.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -464,14 +562,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='36' versionName='1.6.29'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.29.apk
-          sha256sum Vedurspa-1.6.29.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='37' versionName='1.6.30'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.30.apk
+          sha256sum Vedurspa-1.6.30.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.29
-          path: app/Vedurspa-1.6.29.apk
+          name: Vedurspa-1.6.30
+          path: app/Vedurspa-1.6.30.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -488,17 +586,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.29 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.29.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.29.zip | tail -n 1
+          printf 'Veðurspá 1.6.30 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.30.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.30.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.29
-          path: Vedurspa-PC-HTML-1.6.29.zip
+          name: Vedurspa-PC-HTML-1.6.30
+          path: Vedurspa-PC-HTML-1.6.30.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.29 source ZIP
+      - name: Package authoritative Veðurspá 1.6.30 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -508,37 +606,37 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.29-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.30-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.29-complete-source.zip | tail -1
+          unzip -t Vedurspa-1.6.30-complete-source.zip | tail -1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.29-source
-          path: Vedurspa-1.6.29-complete-source.zip
+          name: Vedurspa-1.6.30-source
+          path: Vedurspa-1.6.30-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.29 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.29-native-updater' && github.event_name == 'push'
+      - name: Publish verified v1.6.30 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.30-native-updater' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.29 >/dev/null 2>&1; then
-            gh release upload v1.6.29 app/Vedurspa-1.6.29.apk Vedurspa-PC-HTML-1.6.29.zip Vedurspa-1.6.29-complete-source.zip --clobber
+          if gh release view v1.6.30 >/dev/null 2>&1; then
+            gh release upload v1.6.30 app/Vedurspa-1.6.30.apk Vedurspa-PC-HTML-1.6.30.zip Vedurspa-1.6.30-complete-source.zip --clobber
           else
-            gh release create v1.6.29 \
-              app/Vedurspa-1.6.29.apk \
-              Vedurspa-PC-HTML-1.6.29.zip \
-              Vedurspa-1.6.29-complete-source.zip \
+            gh release create v1.6.30 \
+              app/Vedurspa-1.6.30.apk \
+              Vedurspa-PC-HTML-1.6.30.zip \
+              Vedurspa-1.6.30-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.29 — Update test" \
-              --notes-file app/RELEASE_NOTES_1.6.29.md \
+              --title "Veðurspá 1.6.30 — Update test" \
+              --notes-file app/RELEASE_NOTES_1.6.30.md \
               --latest
           fi
-          gh release view v1.6.29 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.30 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
