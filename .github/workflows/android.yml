@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.32-guidebook-themes]
+    branches: [main, ci-build-vedurspa-1.6.33-settings-tabs]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -655,6 +655,107 @@ jobs:
           python3 -m py_compile app/ci/patch_android.py
           node app/tests/v1632ThemesAndGuide.test.mjs
 
+      - name: Apply Veðurspá 1.6.33 five-icon Settings tabs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'e541f0b108ce012d1adea2f714f895e0b415640d4dbbee1bc258fdc29c021677  ci-src/v1633/ui.patch.gz.b64' | sha256sum -c -
+          base64 -d ci-src/v1633/ui.patch.gz.b64 > /tmp/v1633-ui.patch.gz
+          echo '57c6603ecfe4ac0e69d0f9461dad8d9a5ff63167224c392035bf920c7205e055  /tmp/v1633-ui.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1633-ui.patch.gz | patch --batch -p1 -d app
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          for name in ('package.json','package-lock.json'):
+              p=root/name
+              obj=json.loads(p.read_text())
+              assert obj['version']=='1.6.32',name
+              obj['version']='1.6.33'
+              if name=='package-lock.json':
+                  obj['packages']['']['version']='1.6.33'
+              else:
+                  obj['scripts']['test'] += ' && node tests/v1633SettingsTabs.test.mjs'
+              p.write_text(json.dumps(obj,indent=2,ensure_ascii=False)+'\n')
+          p=root/'ci/patch_android.py'
+          s=p.read_text()
+          assert "'versionCode 39'" in s and 'versionName "1.6.32"' in s
+          s=s.replace("'versionCode 39'","'versionCode 40'")
+          s=s.replace('versionName "1.6.32"','versionName "1.6.33"')
+          s=s.replace('|38|39)', '|38|39|40)').replace(r'1\.6\.32)',r'1\.6\.32|1\.6\.33)')
+          p.write_text(s)
+          for name in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs','v1628UpdateSmoke.test.mjs'):
+              p=root/'tests'/name
+              p.write_text(p.read_text().replace('1.6.32','1.6.33').replace('versionCode 39','versionCode 40'))
+          p=root/'tests/v1630SimpleUpdate.test.mjs'
+          p.write_text(p.read_text().replace('id="settings-update"','id="settings-panel-updates"').replace('versionCode 39','versionCode 40').replace('1\.6\.32','1\.6\.33'))
+          p=root/'tests/v1631LanguageGuide.test.mjs'
+          p.write_text(p.read_text().replace('assert.match(settings,/onOpenGuideCenter/);','assert.match(settings,/id="settings-panel-guide"/);'))
+          p=root/'tests/v1632ThemesAndGuide.test.mjs'
+          s=p.read_text().replace('id="settings-themes"','id="settings-panel-themes"')
+          s=s.replace('assert.match(settings,/onOpenGuideCenter/);','assert.match(settings,/id="settings-panel-guide"/);')
+          s=s.replace('assert.match(settings,/setUpdateMinimized/);','assert.doesNotMatch(settings,/updateMinimized/);')
+          s=s.replace('versionCode 39','versionCode 40').replace('1.6.32','1.6.33')
+          p.write_text(s)
+          (root/'tests/v1633SettingsTabs.test.mjs').write_text("""import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+          const settings=read('src/components/AppSettingsPanel.tsx'),app=read('src/App.tsx');
+          for(const name of ['general','guide','language','themes','updates']){
+            assert.match(settings,new RegExp('settings-tab-'+name));
+            assert.match(settings,new RegExp('settings-panel-'+name));
+          }
+          assert.match(settings,/grid grid-cols-5 gap-1\.5/);
+          assert.match(settings,/aria-label=\{label\}/);
+          assert.match(settings,/role="tab"/);
+          assert.match(settings,/aria-selected=\{activeSection === key\}/);
+          assert.match(settings,/activeSection === 'guide'/);
+          assert.match(settings,/onOpenGuide\('all'\)/);
+          assert.match(settings,/onOpenGuideBook/);
+          assert.match(settings,/activeSection === 'themes'/);
+          assert.match(settings,/APP_THEMES\.map/);
+          assert.match(settings,/activeSection === 'updates' && <section/);
+          assert.doesNotMatch(settings,/onOpenGuideCenter|updateMinimized/);
+          assert.equal((settings.match(/id="btn-check-updates"/g)||[]).length,1);
+          assert.match(settings,/nativeStatus.state === 'install_prompt'/);
+          assert.match(settings,/Uppfæra núna/);
+          assert.match(app,/setSettingsInitialSection\('guide'\)/);
+          assert.doesNotMatch(app,/guideCenterOpen/);
+          assert.match(read('src/utils/appSettings.ts'),/theme: isAppTheme/);
+          assert.equal(JSON.parse(read('package.json')).version,'1.6.33');
+          assert.match(read('ci/patch_android.py'),/versionCode 40/);
+          console.log('Veðurspá 1.6.33 five-icon Settings tab regression PASS');
+          """)
+          (root/'RELEASE_NOTES_1.6.33.md').write_text("""# Veðurspá 1.6.33 — Settings cleanup
+
+          - Five equal-width, icon-only tabs across Settings: General, Guide, Language, Themes and Updates.
+          - Guide is an ordinary Settings tab. Full tour, four individual tours and flip-through Guide Book remain accessible.
+          - Themes moved from General to their own tab, preserving Midnight, Light, Ocean, Forest, Violet and Sunset.
+          - Updates are shown in one place only: the top Updates tab.
+          - Header Help opens the Settings Guide tab directly.
+          - Weather maps, saved settings, forecast caching and Android installer retry remain unchanged.
+          """)
+          (root/'AI_HANDOFF.md').write_text("""# AI_HANDOFF — Veðurspá 1.6.33
+
+          Purpose/state: Weather maps for Iceland, Capacitor Android package is.viktor.vedurspa versionCode 40/versionName 1.6.33, Go portable Windows launcher. Authoritative complete source ZIP is bundled.
+          Architecture: src/App.tsx manages modes and overlays. src/components/AppSettingsPanel.tsx has 5 equal-width icon-only Settings tabs (General/Guide/Language/Themes/Updates). Guide tab launches GuidedTour and GuideBook, without standalone GuideCenter modal. src/i18n/index.ts has nine partially localized UI languages. src/utils/appSettings.ts keeps vedurspa-app-settings-v2 with saved theme; src/utils/appTheme.ts plus CSS defines six palettes including light. Forecast data/caching, official vedur.is warnings, native notification hooks and updater bridging unchanged.
+          Contracts: Keep package ID, debug signer, Github release asset naming, original forecast URLs and schemas, native updater plugin, saved settings and source data. Do not store identifying telemetry.
+          Build/run/tests: Node20 npm install && npm run lint && npm test && npm run build. cd ci && go test ./... . Android npx cap add android && npx cap sync android && python3 ci/patch_android.py && cd android && ./gradlew assembleDebug; verify signed versionCode 40. Windows Go cross build and bundle dist/. CI .github/workflows/build-release.yml reconstructs source overlays and verifies assets.
+          Developer mode: Open Settings > General; tap bottom version 7 times; use developer controls for diagnostics.
+          Latest change: one Settings tab row, Guide and Themes each on own tab, Updates only once. Tests: tests/v1633SettingsTabs.test.mjs plus previous regressions; see TEST_RESULTS.md for hosted outcome.
+          Risks: provider data is still Icelandic; narrow-phone UI/physical install cancel needs live verification. Rollback: restore signed v1.6.32 app/source, backup data before any Android downgrade.
+          Next action: Test five Settings tabs on narrow Android screen, language/theme persistence and install-retry; consult hosted workflow for TypeScript/full test/APK/Windows status.
+          """)
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.33\nAndroid code 40, Windows and signed APK built by GitHub Actions; review run status.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.33\nGitHub Actions runs targeted and full regressions, lint, Android signing/version and Windows build; physical-device QA remains.\n')
+          PY
+          node app/tests/v1633SettingsTabs.test.mjs
+          node app/tests/v1632ThemesAndGuide.test.mjs
+          node app/tests/v1631LanguageGuide.test.mjs
+          node app/tests/v1630SimpleUpdate.test.mjs
+          python3 -m py_compile app/ci/patch_android.py
+          test "$(node -p "require('./app/package.json').version")" = "1.6.33"
+
       - name: Install dependencies
         working-directory: app
         run: npm install --no-audit --no-fund
@@ -689,14 +790,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='39' versionName='1.6.32'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.32.apk
-          sha256sum Vedurspa-1.6.32.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='40' versionName='1.6.33'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.33.apk
+          sha256sum Vedurspa-1.6.33.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.32
-          path: app/Vedurspa-1.6.32.apk
+          name: Vedurspa-1.6.33
+          path: app/Vedurspa-1.6.33.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -713,17 +814,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.32 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.32.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.32.zip | tail -n 1
+          printf 'Veðurspá 1.6.33 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.33.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.33.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.32
-          path: Vedurspa-PC-HTML-1.6.32.zip
+          name: Vedurspa-PC-HTML-1.6.33
+          path: Vedurspa-PC-HTML-1.6.33.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.32 source ZIP
+      - name: Package authoritative Veðurspá 1.6.33 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -733,38 +834,38 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.32-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.33-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp','.apk')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.32-complete-source.zip | tail -1
-          if unzip -Z1 Vedurspa-1.6.32-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
+          unzip -t Vedurspa-1.6.33-complete-source.zip | tail -1
+          if unzip -Z1 Vedurspa-1.6.33-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.32-source
-          path: Vedurspa-1.6.32-complete-source.zip
+          name: Vedurspa-1.6.33-source
+          path: Vedurspa-1.6.33-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.32 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.32-guidebook-themes' && github.event_name == 'push'
+      - name: Publish verified v1.6.33 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.33-guidebook-themes' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.32 >/dev/null 2>&1; then
-            gh release upload v1.6.32 app/Vedurspa-1.6.32.apk Vedurspa-PC-HTML-1.6.32.zip Vedurspa-1.6.32-complete-source.zip --clobber
+          if gh release view v1.6.33 >/dev/null 2>&1; then
+            gh release upload v1.6.33 app/Vedurspa-1.6.33.apk Vedurspa-PC-HTML-1.6.33.zip Vedurspa-1.6.33-complete-source.zip --clobber
           else
-            gh release create v1.6.32 \
-              app/Vedurspa-1.6.32.apk \
-              Vedurspa-PC-HTML-1.6.32.zip \
-              Vedurspa-1.6.32-complete-source.zip \
+            gh release create v1.6.33 \
+              app/Vedurspa-1.6.33.apk \
+              Vedurspa-PC-HTML-1.6.33.zip \
+              Vedurspa-1.6.33-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.32 — Themes and illustrated guide book" \
-              --notes-file app/RELEASE_NOTES_1.6.32.md \
+              --title "Veðurspá 1.6.33 — five-icon Settings tabs" \
+              --notes-file app/RELEASE_NOTES_1.6.33.md \
               --latest
           fi
-          gh release view v1.6.32 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.33 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
