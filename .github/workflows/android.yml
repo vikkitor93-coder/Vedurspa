@@ -358,6 +358,9 @@ jobs:
           echo 'f6619fe5d0284542b720563021894c2c02bc4d007559cf503418c945484c1821  ci-src/v1629.patch.xz' | sha256sum -c -
           xz -dc ci-src/v1629.patch.xz > /tmp/v1629.patch
           patch --batch -p1 -d app < /tmp/v1629.patch
+          # Patch updates the icon generator itself; regenerate after applying it.
+          python3 app/ci/generate_app_icons.py
+          test -s app/assets/app-icons/android/drawable-nodpi/vedurspa_launcher_foreground.png
           python3 - <<'PY'
           from pathlib import Path
           root=Path('app')
