@@ -42,5 +42,5 @@ Developer mode: Settings tap version seven times; diagnostics unchanged. Latest 
 PY
 python3 -m py_compile app/ci/patch_android.py
 node app/tests/v1635HeaderWarning.test.mjs
-node --import tsx app/tests/v1635UpdateProgress.test.tsx
+# TypeScript progress test runs after dependency installation via npm test.
 test "$(node -p "require('./app/package.json').version")" = '1.6.35'
