@@ -25,6 +25,8 @@ p.write_text(s)
 for p in (root/'tests').glob('*'):
     if p.suffix not in ('.mjs','.ts','.tsx'): continue
     s=p.read_text().replace('1.6.34','1.6.35').replace('versionCode 41','versionCode 42')
+    if p.name=='layoutLocation.test.ts':
+        s=s.replace('assert.match(banner,/h-8/)', 'assert.match(banner,/w-9 h-9/)')
     if p.name=='v1612Regression.test.mjs':
         s=s.replace(r'warnings\\.filter\\(w => w\\.level === level\\)\\.length', r'activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length')
         s=s.replace("assert.match(banner,/weather-warning-emboss/);","assert.doesNotMatch(banner,/weather-warning-emboss/);")
