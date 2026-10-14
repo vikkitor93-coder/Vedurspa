@@ -364,7 +364,7 @@ jobs:
           for name in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs','v1628UpdateSmoke.test.mjs'):
               p=root/'tests'/name
               if p.exists():
-                  s=p.read_text().replace("'1.6.28'","'1.6.29'")
+                  s=p.read_text().replace("'1.6.28'","'1.6.29'").replace('v1.6.28','v1.6.29')
                   if name=='v1628UpdateSmoke.test.mjs':
                       s=s.replace('versionCode 35','versionCode 36').replace('1\\.6\\.28','1\\.6\\.29')
                   p.write_text(s)
