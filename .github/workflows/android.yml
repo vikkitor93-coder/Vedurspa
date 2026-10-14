@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.33-settings-tabs]
+    branches: [main, ci-build-vedurspa-1.6.34-warnings-aurora-slider]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -765,6 +765,77 @@ jobs:
           python3 -m py_compile app/ci/patch_android.py
           test "$(node -p "require('./app/package.json').version")" = "1.6.33"
 
+      - name: Apply Veðurspá 1.6.34 warnings aurora and slider update
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d ci-src/v1634/aurora-warning-ui.patch.xz.b64 > /tmp/v1634.patch.xz
+          echo "fb12fbf48671f3976e474860bd7d3c42bb43f27743fcc82d931cf588143ed315  /tmp/v1634.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v1634.patch.xz > /tmp/v1634.patch
+          patch --batch -p1 -d app < /tmp/v1634.patch
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          for name in ('package.json','package-lock.json'):
+              p=root/name
+              obj=json.loads(p.read_text())
+              assert obj['version']=='1.6.33', (name,obj['version'])
+              obj['version']='1.6.34'
+              if name=='package-lock.json': obj['packages']['']['version']='1.6.34'
+              else: obj['scripts']['test']+=' && node tests/v1634WarningAuroraSlider.test.mjs'
+              p.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n')
+          p=root/'ci/patch_android.py'
+          script=p.read_text()
+          assert 'versionCode 40' in script and 'versionName "1.6.33"' in script
+          script=script.replace('versionCode 40','versionCode 41').replace('versionName "1.6.33"','versionName "1.6.34"')
+          script=script.replace('|39|40)','|39|40|41)').replace(r'1\.6\.33)',r'1\.6\.33|1\.6\.34)')
+          p.write_text(script)
+          for name in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs','v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs','v1631LanguageGuide.test.mjs','v1632ThemesAndGuide.test.mjs','v1633SettingsTabs.test.mjs'):
+              p=root/'tests'/name
+              if p.exists(): p.write_text(p.read_text().replace('1.6.33','1.6.34').replace('versionCode 40','versionCode 41'))
+          (root/'tests/v1634WarningAuroraSlider.test.mjs').write_text("""import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          const read=(f)=>readFileSync(new URL('../'+f,import.meta.url),'utf8');
+          const app=read('src/App.tsx'),header=read('src/components/CompactHeader.tsx');
+          const banner=read('src/components/WarningBanner.tsx'),aurora=read('src/components/NorthernLightsBar.tsx');
+          const slider=read('src/components/TimelineSlider.tsx'),css=read('src/index.css');
+          assert.match(header,/weatherWarnings = \[\]/);
+          assert.match(header,/<WarningBanner warnings=\{weatherWarnings\}/);
+          assert.doesNotMatch(app,/id="shared-warning-slot"/);
+          assert.match(app,/id="aurora-cloud-explainer"/);
+          assert.match(css,/height:24px;min-height:24px;max-height:24px/);
+          assert.match(banner,/weather-warning-emboss/);
+          assert.match(css,/prefers-reduced-motion:reduce/);
+          assert.match(aurora,/bestTimeInfo.cloudPercent/);
+          assert.match(slider,/slider-time-tooltip/);
+          assert.equal(JSON.parse(read('package.json')).version,'1.6.34');
+          console.log('1.6.34 warning, aurora, cloud and slider regression PASS');
+          """)
+          (root/'RELEASE_NOTES_1.6.34.md').write_text("""# Veðurspá 1.6.34 — Aurora clarity and warnings
+
+          - Moved weather warnings beside the date in the app header, with severity colors, real counts, embossed numbers, and a gentle pulse that respects reduced-motion settings.
+          - Reused the exact old 24px warning strip for a short note under the aurora map: cloud colors mean clouds, not where the aurora will appear. Map height remains unchanged.
+          - Besta skyggnið shows cloud-cover percentage for its best forecast, or clearly labels current cloud cover when no location is selected.
+          - The slider shows forecast time directly above your finger while scrubbing.
+          - No changes to provider data, saved settings, or app update contracts.
+          """)
+          (root/'AI_HANDOFF.md').write_text("""# AI_HANDOFF — Veðurspá 1.6.34
+
+          Purpose: Icelandic weather forecasts using vedur.is; React/Vite/Capacitor 6 Android app + Go Windows launcher. Base 1.6.33; versionCode 41, versionName 1.6.34, package is.viktor.vedurspa. Complete source ZIP is authoritative.
+          Entry points: src/App.tsx, src/components/CompactHeader.tsx, WarningBanner.tsx, NorthernLightsBar.tsx, TimelineSlider.tsx, src/index.css; src/utils/vedurDirectClient.ts; ci/patch_android.py and ci/*.go; .github/workflows/build-release.yml.
+          Protocols/data: preserve existing HTTP clients, warning severity values red/orange/yellow, saved localStorage formats and forecast frames ISO timestamps/dateParts. Existing native update plugin, languages, guide, themes and map/zoom/cache flows unchanged.
+          New features: header warning counts with animation/reduced motion; Besta skyggnið actual best-cloud percent; 24px aurora explainer moves former warning-slot budget BELOW map; slider drag time tooltip. CSS uses utility theme variables.
+          Build: Node 20 npm install, npm run lint, npm test, npm run build, npx cap add android; npx cap sync android; python3 ci/patch_android.py; ./android/gradlew assembleDebug; apksigner/aapt verify versionCode41 and same debug certificate; Go 1.22 Windows launcher, source ZIP. CI runs automatically on branch ci-build-vedurspa-1.6.34-warnings-aurora-slider.
+          Dev mode: Settings, tap version 7 times. No personal telemetry or new persisted state. Testing: tests/v1634WarningAuroraSlider.test.mjs plus full prior suite. Known limits: physical mobile QA pending; narrow header layout and tooltip during drag need phone inspection. Rollback to signed 1.6.33 build/source (Android downgrade may require uninstall). Exact next action: verify hosted green CI, three artifacts, and compare PC/APK web assets, then test on phone.
+          """)
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.34\nAndroid versionCode 41; signed APK, Windows build and source ZIP assembled in GitHub Actions.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.34\nTargeted warning/aurora/slider regression and full suite run in hosted CI. See GitHub Actions build logs for final results.\n')
+          PY
+          python3 -m py_compile app/ci/patch_android.py
+          node app/tests/v1634WarningAuroraSlider.test.mjs
+          test "$(node -p "require('./app/package.json').version")" = '1.6.34'
+
       - name: Install dependencies
         working-directory: app
         run: npm install --no-audit --no-fund
@@ -799,14 +870,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='40' versionName='1.6.33'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.33.apk
-          sha256sum Vedurspa-1.6.33.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='41' versionName='1.6.34'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.34.apk
+          sha256sum Vedurspa-1.6.34.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.33
-          path: app/Vedurspa-1.6.33.apk
+          name: Vedurspa-1.6.34
+          path: app/Vedurspa-1.6.34.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -823,17 +894,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.33 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.33.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.33.zip | tail -n 1
+          printf 'Veðurspá 1.6.34 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.34.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.34.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.33
-          path: Vedurspa-PC-HTML-1.6.33.zip
+          name: Vedurspa-PC-HTML-1.6.34
+          path: Vedurspa-PC-HTML-1.6.34.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.33 source ZIP
+      - name: Package authoritative Veðurspá 1.6.34 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -843,38 +914,38 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.33-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.34-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp','.apk')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.33-complete-source.zip | tail -1
-          if unzip -Z1 Vedurspa-1.6.33-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
+          unzip -t Vedurspa-1.6.34-complete-source.zip | tail -1
+          if unzip -Z1 Vedurspa-1.6.34-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.33-source
-          path: Vedurspa-1.6.33-complete-source.zip
+          name: Vedurspa-1.6.34-source
+          path: Vedurspa-1.6.34-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.33 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.33-settings-tabs' && github.event_name == 'push'
+      - name: Publish verified v1.6.34 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.34-settings-tabs' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.33 >/dev/null 2>&1; then
-            gh release upload v1.6.33 app/Vedurspa-1.6.33.apk Vedurspa-PC-HTML-1.6.33.zip Vedurspa-1.6.33-complete-source.zip --clobber
+          if gh release view v1.6.34 >/dev/null 2>&1; then
+            gh release upload v1.6.34 app/Vedurspa-1.6.34.apk Vedurspa-PC-HTML-1.6.34.zip Vedurspa-1.6.34-complete-source.zip --clobber
           else
-            gh release create v1.6.33 \
-              app/Vedurspa-1.6.33.apk \
-              Vedurspa-PC-HTML-1.6.33.zip \
-              Vedurspa-1.6.33-complete-source.zip \
+            gh release create v1.6.34 \
+              app/Vedurspa-1.6.34.apk \
+              Vedurspa-PC-HTML-1.6.34.zip \
+              Vedurspa-1.6.34-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.33 — five-icon Settings tabs" \
-              --notes-file app/RELEASE_NOTES_1.6.33.md \
+              --title "Veðurspá 1.6.34 — Aurora clarity, warnings and slider time" \
+              --notes-file app/RELEASE_NOTES_1.6.34.md \
               --latest
           fi
-          gh release view v1.6.33 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.34 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
