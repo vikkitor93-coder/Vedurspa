@@ -519,6 +519,19 @@ jobs:
           node app/tests/v1629NativeUpdate.test.mjs
           python3 -m py_compile app/ci/patch_android.py
 
+      - name: Update escaped legacy Android-version test matcher
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/v1628UpdateSmoke.test.mjs')
+          s=p.read_text()
+          assert r'1\.6\.29' in s, 'legacy version regex changed'
+          s=s.replace(r'1\.6\.29',r'1\.6\.30')
+          p.write_text(s)
+          PY
+          node app/tests/v1628UpdateSmoke.test.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
