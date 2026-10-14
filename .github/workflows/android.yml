@@ -793,7 +793,7 @@ jobs:
           p.write_text(script)
           for name in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs','v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs','v1631LanguageGuide.test.mjs','v1632ThemesAndGuide.test.mjs','v1633SettingsTabs.test.mjs'):
               p=root/'tests'/name
-              if p.exists(): p.write_text(p.read_text().replace('1.6.33','1.6.34').replace('versionCode 40','versionCode 41'))
+              if p.exists(): p.write_text(p.read_text().replace('1.6.33','1.6.34').replace('versionCode 40','versionCode 41').replace(r'1\.6\.33',r'1\.6\.34'))
           p=root/'tests/v1612Regression.test.mjs'
           s=p.read_text()
           old="assert.match(banner,/visibleLevels\\.map/,'Show yellow and orange warnings simultaneously');"
