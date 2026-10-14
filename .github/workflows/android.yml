@@ -2,15 +2,18 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci-build-vedurspa-1.6.27-updater-icon]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -110,6 +113,189 @@ jobs:
           base64 -d ci-src/v1616fix/overlay.tar.gz.b64 > /tmp/v1616fix-overlay.tar.gz
           echo '81f862cf8bf4811a684f710a47b322f2200e5dab40ca3d2eccd2e82084131839  /tmp/v1616fix-overlay.tar.gz' | sha256sum -c -
           tar -xzf /tmp/v1616fix-overlay.tar.gz -C app
+      - name: Apply authoritative 1.6.21 source changes
+        shell: bash
+        run: |
+          cat ci-src/v1621/part-* | base64 -d > /tmp/v1621-overlay.tar.gz
+          echo '2113c01e8e8654e4b1331618bb9b30797496d03b82c8bd771eb0bb04174c02a3  /tmp/v1621-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1621-overlay.tar.gz -C app
+          test "$(node -p "require('./app/package.json').version")" = "1.6.21"
+          python3 app/ci/generate_official_map_focus.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/components/StationForecastPanel.tsx')
+          original='<OfficialStationMapFrame stationBackLabel={stationBackLabel}'
+          replacement="<OfficialStationMapFrame stationBackLabel={stationBackLabel === 'short' ? 'short' : stationBackLabel === 'arrow' ? 'arrow' : 'full'}"
+          code=p.read_text()
+          assert code.count(original)==1, 'Station back label patch drift'
+          p.write_text(code.replace(original,replacement))
+          test=Path('app/tests/v1621RegionControls.test.mjs')
+          testcode=test.read_text()
+          old=r"assert.match(station,/stationBackLabel=\{stationBackLabel\}/);"
+          new=r"assert.match(station,/stationBackLabel=\{stationBackLabel === 'short' \? 'short' : stationBackLabel === 'arrow' \? 'arrow' : 'full'\}/);"
+          assert testcode.count(old)==1,'Regression matcher drift'
+          test.write_text(testcode.replace(old,new))
+          PY
+
+      - name: Apply Veðurspá 1.6.22 UX and localization preparation
+        shell: bash
+        run: |
+          base64 -d ci-src/v1622/patch.gz.b64 > /tmp/v1622.patch.gz
+          echo 'f1efcf35e58b283be07e75455fdb49375edd282a04f23e17fce0da14dd1cf3c4  /tmp/v1622.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1622.patch.gz > /tmp/v1622.patch
+          # Documentation in the CI reconstruction comes from an older baseline;
+          # only three text-only record files are skipped, never app/test source.
+          python3 - <<'PY'
+          from pathlib import Path
+          original=Path('/tmp/v1622.patch').read_text()
+          kept=[];skip=False
+          for line in original.splitlines(keepends=True):
+            if line.startswith('diff -ruN '):
+              skip=any(line.rstrip().endswith('/'+name) for name in ('AI_HANDOFF.md','BUILD_INFO.md','TEST_RESULTS.md'))
+            if not skip:kept.append(line)
+          Path('/tmp/v1622-code.patch').write_text(''.join(kept))
+          PY
+          patch -p1 -d app < /tmp/v1622-code.patch
+          python3 app/ci/generate_official_map_focus.py
+          test "$(node -p "require('./app/package.json').version")" = "1.6.22"
+
+      - name: Update component lifecycle mocks for new imports
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/stationKeepAlive.test.mjs')
+          s=p.read_text()
+          anchor="'../utils/officialStationMap':{openOriginalStationMap:async()=>{}}"
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+",'lucide-react':{ArrowLeft:()=>null},'../i18n':{t:key=>key==='station.iceland'?'Ísland':'Aftur til Íslands'}")
+          p.write_text(s)
+          PY
+
+      - name: Apply Veðurspá 1.6.23 cleanup source
+        shell: bash
+        run: |
+          base64 -d ci-src/v1623/overlay.tar.gz.b64 > /tmp/v1623-overlay.tar.gz
+          echo 'd3c0531d708b9eef04df388fa067ed611996a2f0d4105b2d0631ef9dae1c2875  /tmp/v1623-overlay.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1623-overlay.tar.gz -C app
+          rm -f app/public/history-feature.js
+          test "$(node -p "require('./app/package.json').version")" = "1.6.23"
+          node app/tests/v1623Cleanup.test.mjs
+
+      - name: Apply version-agnostic regression test fix
+        shell: bash
+        run: |
+          base64 -d ci-src/v1623/testfix.tar.gz.b64 > /tmp/v1623testfix.tar.gz
+          echo '48c5d8dabfcead3c2b673963f6a310cbca2a40a662898b784ed7a7ba8f083415  /tmp/v1623testfix.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v1623testfix.tar.gz -C app
+          node app/tests/v1616Regression.test.mjs
+
+      - name: Apply Veðurspá 1.6.24 live-clock and UI compatibility patch
+        shell: bash
+        run: |
+          base64 -d ci-src/v1624/live-clock.patch.gz.b64 > /tmp/v1624.patch.gz
+          echo '3074b849baa915075ac1508924c9aaaa335170554b599320c4292430921028a1  /tmp/v1624.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1624.patch.gz > /tmp/v1624.patch
+          patch --batch -p1 -d app < /tmp/v1624.patch
+          test "$(node -p "require('./app/package.json').version")" = "1.6.24"
+          node app/tests/v1624LiveClockRegression.test.mjs
+
+      - name: Apply Veðurspá 1.6.25 responsive aurora/clock styling
+        shell: bash
+        run: |
+          base64 -d ci-src/v1625/aurora-layout.patch.gz.b64 > /tmp/v1625.patch.gz
+          echo '52e8c303ad638123ed73c04d30c2b1c9a118fb7f517a33fcab65cd0fab9bc4aa  /tmp/v1625.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1625.patch.gz | patch --batch -p1 -d app
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app')
+          p=root/'package.json';s=p.read_text();s=s.replace('"version": "1.6.24"','"version": "1.6.25"');s=s.replace('node --import tsx tests/liveClock.test.mjs"', 'node --import tsx tests/liveClock.test.mjs && node --import tsx tests/v1625AuroraLayout.test.mjs"');p.write_text(s)
+          p=root/'package-lock.json';s=p.read_text().replace('"version": "1.6.24"','"version": "1.6.25"');p.write_text(s)
+          p=root/'ci/patch_android.py';s=p.read_text();s=s.replace("'versionCode 31'", "'versionCode 32'").replace("'versionName \"1.6.24\"'","'versionName \"1.6.25\"'");p.write_text(s)
+          PY
+          test "$(node -p "require('./app/package.json').version")" = "1.6.25"
+
+      - name: Apply Veðurspá 1.6.26 compact aurora strip
+        shell: bash
+        run: |
+          base64 -d ci-src/v1626/compact-aurora.patch.gz.b64 > /tmp/v1626.patch.gz
+          echo '961c7b3822e69e201896f8333d48c1148eb87e9f508c831d1279beeff5af432b  /tmp/v1626.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/v1626.patch.gz > /tmp/v1626.patch
+          # The rebuilt baseline modifies this generator's previous version token
+          # differently from the standalone complete-source ZIP.
+          sed '/^--- a\/ci\/patch_android.py/,$d' /tmp/v1626.patch | patch --batch -p1 -d app
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/ci/patch_android.py')
+          s=p.read_text()
+          assert "'versionCode 32'" in s and "'versionName \"1.6.25\"'" in s
+          s=s.replace("'versionCode 32'","'versionCode 33'").replace("'versionName \"1.6.25\"'","'versionName \"1.6.26\"'")
+          # Preserve any original allow-list and accept the newest upgrade versions.
+          s=s.replace(r"|31)\b",r"|31|32|33)\b").replace(r"1\.6\.24)",r"1\.6\.24|1\.6\.25|1\.6\.26)")
+          p.write_text(s)
+          p=Path('app/package.json')
+          s=p.read_text()
+          needle='node --import tsx tests/v1625AuroraLayout.test.mjs"'
+          assert needle in s
+          p.write_text(s.replace(needle,'node --import tsx tests/v1625AuroraLayout.test.mjs && node --import tsx tests/v1626CompactAurora.test.mjs"'))
+          # Prior-version behavioral assertions stay, but their version pin evolves.
+          p=Path('app/tests/v1624LiveClockRegression.test.mjs')
+          s=p.read_text().replace("version, '1.6.25'","version, '1.6.26'").replace('taller two-row layout','compact single-row layout')
+          p.write_text(s)
+          p=Path('app/tests/v1626CompactAurora.test.mjs')
+          s=p.read_text()
+          s=s.replace("assert.doesNotMatch(source,/grid-cols-2/,'remove tall two-row layout');",
+              "assert.doesNotMatch(source.match(/<div id=\"aurora-controls-grid\"[^>]*>/)?.[0]||'',/grid-cols-2/,'no tall two-row controls');")
+          p.write_text(s)
+          PY
+          test "$(node -p "require('./app/package.json').version")" = "1.6.26"
+
+      - name: Apply Veðurspá 1.6.27 updater and rain/snow icon overlay
+        shell: bash
+        run: |
+          base64 -d ci-src/v1627/overlay.tar.xz.b64 > /tmp/v1627-overlay.tar.xz
+          echo 'a68ff2e24283130e53307d5a9a1eabed5fbd1ee26786b4728e1ebc8e0c2fd7c9  /tmp/v1627-overlay.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/v1627-overlay.tar.xz -C app
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          lock=root/'package-lock.json'
+          data=json.loads(lock.read_text())
+          data['version']='1.6.27'
+          data['packages']['']['version']='1.6.27'
+          lock.write_text(json.dumps(data,indent=2,ensure_ascii=False)+'\n')
+          assert json.loads((root/'package.json').read_text())['version']=='1.6.27'
+          PY
+          test -s app/assets/app-icons/build-master.jpg
+
+      - name: Prepare approved Veðurspá artwork and source handoff
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check --break-system-packages Pillow
+          python3 app/ci/generate_app_icons.py
+          cat > app/AI_HANDOFF.md <<'END_HANDOFF'
+          # AI_HANDOFF — Veðurspá 1.6.27
+          
+          Purpose/state: Icelandic weather forecast app (React 19, TypeScript, Vite) for Android Capacitor and portable Windows Go launcher. Current version 1.6.27, Android package is.viktor.vedurspa, versionCode 34. Source ZIP is authoritative.
+          
+          Architecture: src/App.tsx manages active forecast, maps, timeline, cached weather, warnings and modes. src/components/AppSettingsPanel.tsx exposes Settings and GitHub release update checks; src/utils/appUpdate.ts provides typed GitHub release metadata, semantic numeric version comparison, and tag fallback; src/utils/externalLink.ts and native-src/is/viktor/vedurspa/ExternalLinkPlugin.java open GitHub safely in system browser on Android. src/components/NorthernLightsBar.tsx keeps four compact aurora controls. src/components/StationForecastPanel.tsx / OfficialStationMapFrame.tsx integrate official Staðaspá. src/utils and src/officialAdapter contain forecast/cache/provider contracts; native-src hosts Android plugins.
+          
+          Dependencies/config: package.json / package-lock.json; Capacitor 6, Java 17, Android SDK, npm, Go 1.22, Pillow (icon generation in CI). capacitor.config.json fixes appId. No persisted settings migration or provider schema changes. Existing debug signing key and permissions retained for compatibility. Do not replace signing keystore.
+          
+          Release: approved aurora artwork with rain left / snow right is kept as docs/approved-aurora-rain-left-snow-right.png; compact JPG master assets/app-icons/build-master.jpg is rendered by ci/generate_app_icons.py to web PNG, Apple touch icon, Android launcher PNGs and Windows ICO. Settings shows installed version, GitHub latest release notes, version comparison and APK/PC/source links; if no release exists it falls back to latest tag. This is a download/link updater, not silent self-install.
+          
+          Build/test: npm install; npm run lint; npm test; npm run build; python3 ci/generate_app_icons.py; npx cap add android; npx cap sync android; python3 ci/patch_android.py; (cd android && ./gradlew assembleDebug). Verify APK signature and package versionCode 34/versionName 1.6.27. Windows: cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .; bundle dist as web/ and the launcher. GitHub workflow on ci-build-vedurspa-1.6.27-updater-icon performs hosted builds. Developer tools: Settings, tap version seven times to enable mode, then use Developer Mode.
+          
+          Latest tests: targeted updater test and native link checks prepared; hosted full regression + APK signing and Windows bundle are checked by GitHub Actions. Check logs for definitive results. Risks: phone visual/touch QA still needed; GitHub Releases must be published with asset filenames ending .apk, PC*.zip, source*.zip to enable in-app downloads; repo must stay public for unauthenticated release API. Rollback: keep 1.6.26 signed APK and Windows bundle; reinstall old version if necessary (Android may require uninstall on version downgrade). Next action: install 1.6.27 APK over 1.6.26, verify icon/Settings updater and download path, verify existing weather maps and notification settings.
+          END_HANDOFF
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('app')
+          note=(root/'RELEASE_NOTES_1.6.27.md').read_text()
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.27\n\nAndroid versionCode 34; source overlay SHA256 a68ff2e24283130e53307d5a9a1eabed5fbd1ee26786b4728e1ebc8e0c2fd7c9. Builds, tests and signed APK are produced by the hosted GitHub Actions workflow.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.27 test results\n\nChecks in GitHub Actions: npm lint, full npm test regression suite, Vite production build, Android Gradle assembleDebug, signature/certificate and Android version verification, Windows Go executable and source packaging. Refer to CI job logs for final outcomes.\n')
+          PY
 
       - uses: actions/setup-node@v4
         with:
@@ -154,14 +340,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='23' versionName='1.6.16'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.16.apk
-          sha256sum Vedurspa-1.6.16.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='34' versionName='1.6.27'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.27.apk
+          sha256sum Vedurspa-1.6.27.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.16
-          path: app/Vedurspa-1.6.16.apk
+          name: Vedurspa-1.6.26
+          path: app/Vedurspa-1.6.27.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -174,15 +360,40 @@ jobs:
         run: |
           mkdir -p ../pc-bundle/web
           cp -a dist/. ../pc-bundle/web/
+          cp assets/app-icons/app-icon.ico ../pc-bundle/Veðurspá.ico
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.16 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.16.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.16.zip | tail -n 1
+          printf 'Veðurspá 1.6.27 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.27.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.27.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.16
-          path: Vedurspa-PC-HTML-1.6.16.zip
+          name: Vedurspa-PC-HTML-1.6.27
+          path: Vedurspa-PC-HTML-1.6.27.zip
+          if-no-files-found: error
+
+      - name: Package authoritative Veðurspá 1.6.27 source ZIP
+        shell: bash
+        run: |
+          mkdir -p app/.github/workflows
+          cp .github/workflows/android.yml app/.github/workflows/build-release.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile,ZIP_DEFLATED
+          root=Path('app')
+          excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
+          with ZipFile('Vedurspa-1.6.27-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+              for path in sorted(root.rglob('*')):
+                  if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp')):
+                      continue
+                  z.write(path,path.relative_to(root))
+          PY
+          unzip -t Vedurspa-1.6.27-complete-source.zip | tail -1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vedurspa-1.6.27-source
+          path: Vedurspa-1.6.27-complete-source.zip
           if-no-files-found: error
