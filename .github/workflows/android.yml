@@ -897,6 +897,13 @@ jobs:
           legacy=p.read_text()
           legacy=legacy.replace('assert.match(banner,/weather-warning-emboss/);','assert.doesNotMatch(banner,/weather-warning-emboss/);')
           p.write_text(legacy)
+          p=root/'tests/v1612Regression.test.mjs'
+          s=p.read_text()
+          old="assert.match(banner,/warnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual warnings are counted per severity');"
+          assert old in s
+          s=s.replace(old,"assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warnings counted for accessibility');")
+          s=s.replace("'Show simultaneous red, orange and yellow warning counts'","'Retain severity breakdown in accessible label'")
+          p.write_text(s)
           (root/'RELEASE_NOTES_1.6.35.md').write_text("""# Veðurspá 1.6.35 — Update progress and warning header refinement
           
           - Android app updater shows download percentage, downloaded/total MB and an indeterminate loading bar when size is unknown.
