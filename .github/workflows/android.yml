@@ -749,6 +749,15 @@ jobs:
           (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.33\nAndroid code 40, Windows and signed APK built by GitHub Actions; review run status.\n')
           (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.33\nGitHub Actions runs targeted and full regressions, lint, Android signing/version and Windows build; physical-device QA remains.\n')
           PY
+          # Inherited tests contain escaped version regexes, not only plain version strings.
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs'):
+              p=Path('app/tests')/name
+              text=p.read_text()
+              text=text.replace(r'1\.6\.32',r'1\.6\.33').replace(r'1\\.6\\.32',r'1\\.6\\.33')
+              p.write_text(text)
+          PY
           node app/tests/v1633SettingsTabs.test.mjs
           node app/tests/v1632ThemesAndGuide.test.mjs
           node app/tests/v1631LanguageGuide.test.mjs
