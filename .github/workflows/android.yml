@@ -619,6 +619,16 @@ jobs:
           assert "ui('checkUpdate', settings.language)" in text
           p.write_text(text.replace("ui('checkUpdate', settings.language)","ui('checkUpdate',settings.language)"))
           PY
+          # Upgrade inherited version assertions; keep the real test behavior.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/v1628UpdateSmoke.test.mjs')
+          s=p.read_text()
+          assert '/versionCode 38/' in s
+          s=s.replace('/versionCode 38/','/versionCode 39/')
+          s=s.replace('1\\.6\\.31','1\\.6\\.32')
+          p.write_text(s)
+          PY
           test "$(node -p "require('./app/package.json').version")" = "1.6.32"
           python3 -m py_compile app/ci/patch_android.py
           node app/tests/v1632ThemesAndGuide.test.mjs
