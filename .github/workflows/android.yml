@@ -709,7 +709,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish verified v1.6.32 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.32-languages-guides' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.32-guidebook-themes' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
