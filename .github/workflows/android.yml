@@ -950,7 +950,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish verified v1.6.34 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.34-settings-tabs' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.34-warnings-aurora-slider' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
