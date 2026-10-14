@@ -28,6 +28,7 @@ for p in (root/'tests').glob('*'):
     if p.name=='v1612Regression.test.mjs':
         s=s.replace(r'warnings\\.filter\\(w => w\\.level === level\\)\\.length', r'activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length')
         s=s.replace("assert.match(banner,/weather-warning-emboss/);","assert.doesNotMatch(banner,/weather-warning-emboss/);")
+        s='\n'.join(line.replace('warnings','activeWarnings') if 'Actual per-severity warning count' in line else line for line in s.splitlines())+'\n'
     if p.name=='v1634WarningAuroraSlider.test.mjs':
         s=s.replace('assert.match(banner,/weather-warning-emboss/);', 'assert.match(banner,/activeWarnings/);\nassert.doesNotMatch(banner,/weather-warning-emboss/);')
     p.write_text(s)
