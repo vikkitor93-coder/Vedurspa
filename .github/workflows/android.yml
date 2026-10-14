@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.27-updater-icon]
+    branches: [main, ci-build-vedurspa-1.6.28-update-smoke]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -269,15 +269,69 @@ jobs:
           PY
           test -s app/assets/app-icons/build-master.jpg
 
+      - name: Apply 1.6.28 patch-only update
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('app')
+          for filename in ('package.json','package-lock.json'):
+              p=root/filename
+              data=json.loads(p.read_text())
+              assert data['version']=='1.6.27',filename
+              data['version']='1.6.28'
+              if filename=='package-lock.json':
+                  data['packages']['']['version']='1.6.28'
+              else:
+                  data['scripts']['test'] += ' && node --import tsx tests/v1628UpdateSmoke.test.mjs'
+              p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          p=root/'ci/patch_android.py'
+          s=p.read_text()
+          assert 'versionCode 34' in s and 'versionName "1.6.27"' in s
+          s=s.replace('versionCode 34','versionCode 35').replace('versionName "1.6.27"','versionName "1.6.28"')
+          s=s.replace('|33|34)', '|33|34|35)').replace(r'1\.6\.27)',r'1\.6\.27|1\.6\.28)')
+          p.write_text(s)
+          for filename in ('v1623Cleanup.test.mjs','v1624LiveClockRegression.test.mjs','v1625AuroraLayout.test.mjs'):
+              p=root/'tests'/filename
+              p.write_text(p.read_text().replace("'1.6.27'","'1.6.28'"))
+          (root/'tests/v1628UpdateSmoke.test.mjs').write_text("""import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { compareVersions } from '../src/utils/appUpdate.ts';
+          const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+          const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
+          assert.equal(pkg.version,'1.6.28');
+          assert.equal(lock.version,'1.6.28');
+          assert.equal(lock.packages[''].version,'1.6.28');
+          assert.equal(compareVersions('v1.6.28','1.6.27'),1);
+          assert.equal(compareVersions('1.6.28','v1.6.28'),0);
+          const patcher=readFileSync(new URL('../ci/patch_android.py',import.meta.url),'utf8');
+          assert.match(patcher,/versionCode 35/);
+          assert.match(patcher,/versionName "1\.6\.28"/);
+          console.log('Veðurspá 1.6.28 version/update smoke PASS');
+          """)
+          (root/'RELEASE_NOTES_1.6.28.md').write_text("""# Veðurspá 1.6.28 — Update test
+
+          - Version update from 1.6.27 to 1.6.28 to test in-app updates.
+          - No changes to weather data, maps, UI, settings or caches.
+          - Android versionCode increased from 34 to 35 for an in-place upgrade.
+          - Download Android APK, Windows ZIP and source ZIP below.
+
+          Test with v1.6.27: Settings → Uppfærsla og patch notes → Athuga núna; verify 1.6.28 appears.
+          """)
+          PY
+          test "$(node -p "require('./app/package.json').version")" = '1.6.28'
+          python3 -m py_compile app/ci/patch_android.py
+
       - name: Prepare approved Veðurspá artwork and source handoff
         shell: bash
         run: |
           python3 -m pip install --disable-pip-version-check --break-system-packages Pillow
           python3 app/ci/generate_app_icons.py
           cat > app/AI_HANDOFF.md <<'END_HANDOFF'
-          # AI_HANDOFF — Veðurspá 1.6.27
+          # AI_HANDOFF — Veðurspá 1.6.28
           
-          Purpose/state: Icelandic weather forecast app (React 19, TypeScript, Vite) for Android Capacitor and portable Windows Go launcher. Current version 1.6.27, Android package is.viktor.vedurspa, versionCode 34. Source ZIP is authoritative.
+          Purpose/state: Icelandic weather forecast app (React 19, TypeScript, Vite) for Android Capacitor and portable Windows Go launcher. Current version 1.6.28, Android package is.viktor.vedurspa, versionCode 35. Source ZIP is authoritative.
           
           Architecture: src/App.tsx manages active forecast, maps, timeline, cached weather, warnings and modes. src/components/AppSettingsPanel.tsx exposes Settings and GitHub release update checks; src/utils/appUpdate.ts provides typed GitHub release metadata, semantic numeric version comparison, and tag fallback; src/utils/externalLink.ts and native-src/is/viktor/vedurspa/ExternalLinkPlugin.java open GitHub safely in system browser on Android. src/components/NorthernLightsBar.tsx keeps four compact aurora controls. src/components/StationForecastPanel.tsx / OfficialStationMapFrame.tsx integrate official Staðaspá. src/utils and src/officialAdapter contain forecast/cache/provider contracts; native-src hosts Android plugins.
           
@@ -285,16 +339,16 @@ jobs:
           
           Release: approved aurora artwork with rain left / snow right is kept as docs/approved-aurora-rain-left-snow-right.png; compact JPG master assets/app-icons/build-master.jpg is rendered by ci/generate_app_icons.py to web PNG, Apple touch icon, Android launcher PNGs and Windows ICO. Settings shows installed version, GitHub latest release notes, version comparison and APK/PC/source links; if no release exists it falls back to latest tag. This is a download/link updater, not silent self-install.
           
-          Build/test: npm install; npm run lint; npm test; npm run build; python3 ci/generate_app_icons.py; npx cap add android; npx cap sync android; python3 ci/patch_android.py; (cd android && ./gradlew assembleDebug). Verify APK signature and package versionCode 34/versionName 1.6.27. Windows: cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .; bundle dist as web/ and the launcher. GitHub workflow on ci-build-vedurspa-1.6.27-updater-icon performs hosted builds. Developer tools: Settings, tap version seven times to enable mode, then use Developer Mode.
+          Build/test: npm install; npm run lint; npm test; npm run build; python3 ci/generate_app_icons.py; npx cap add android; npx cap sync android; python3 ci/patch_android.py; (cd android && ./gradlew assembleDebug). Verify APK signature and package versionCode 35/versionName 1.6.28. Windows: cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .; bundle dist as web/ and the launcher. GitHub workflow on ci-build-vedurspa-1.6.28-updater-icon performs hosted builds. Developer tools: Settings, tap version seven times to enable mode, then use Developer Mode.
           
-          Latest tests: targeted updater test and native link checks prepared; hosted full regression + APK signing and Windows bundle are checked by GitHub Actions. Check logs for definitive results. Risks: phone visual/touch QA still needed; GitHub Releases must be published with asset filenames ending .apk, PC*.zip, source*.zip to enable in-app downloads; repo must stay public for unauthenticated release API. Rollback: keep 1.6.26 signed APK and Windows bundle; reinstall old version if necessary (Android may require uninstall on version downgrade). Next action: install 1.6.27 APK over 1.6.26, verify icon/Settings updater and download path, verify existing weather maps and notification settings.
+          Latest tests: targeted updater test and native link checks prepared; hosted full regression + APK signing and Windows bundle are checked by GitHub Actions. Check logs for definitive results. Risks: phone visual/touch QA still needed; GitHub Releases must be published with asset filenames ending .apk, PC*.zip, source*.zip to enable in-app downloads; repo must stay public for unauthenticated release API. Rollback: keep 1.6.26 signed APK and Windows bundle; reinstall old version if necessary (Android may require uninstall on version downgrade). Next action: install 1.6.28 APK over 1.6.26, verify icon/Settings updater and download path, verify existing weather maps and notification settings.
           END_HANDOFF
           python3 - <<'PY'
           from pathlib import Path
           root=Path('app')
-          note=(root/'RELEASE_NOTES_1.6.27.md').read_text()
-          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.27\n\nAndroid versionCode 34; source overlay SHA256 a68ff2e24283130e53307d5a9a1eabed5fbd1ee26786b4728e1ebc8e0c2fd7c9. Builds, tests and signed APK are produced by the hosted GitHub Actions workflow.\n')
-          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.27 test results\n\nChecks in GitHub Actions: npm lint, full npm test regression suite, Vite production build, Android Gradle assembleDebug, signature/certificate and Android version verification, Windows Go executable and source packaging. Refer to CI job logs for final outcomes.\n')
+          note=(root/'RELEASE_NOTES_1.6.28.md').read_text()
+          (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.28\n\nAndroid versionCode 35; source overlay SHA256 a68ff2e24283130e53307d5a9a1eabed5fbd1ee26786b4728e1ebc8e0c2fd7c9. Builds, tests and signed APK are produced by the hosted GitHub Actions workflow.\n')
+          (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.28 test results\n\nChecks in GitHub Actions: npm lint, full npm test regression suite, Vite production build, Android Gradle assembleDebug, signature/certificate and Android version verification, Windows Go executable and source packaging. Refer to CI job logs for final outcomes.\n')
           PY
 
       - uses: actions/setup-node@v4
@@ -340,14 +394,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='34' versionName='1.6.27'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.27.apk
-          sha256sum Vedurspa-1.6.27.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='35' versionName='1.6.28'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.28.apk
+          sha256sum Vedurspa-1.6.28.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.26
-          path: app/Vedurspa-1.6.27.apk
+          name: Vedurspa-1.6.28
+          path: app/Vedurspa-1.6.28.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -364,17 +418,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.27 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.27.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.27.zip | tail -n 1
+          printf 'Veðurspá 1.6.28 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.28.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.28.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.27
-          path: Vedurspa-PC-HTML-1.6.27.zip
+          name: Vedurspa-PC-HTML-1.6.28
+          path: Vedurspa-PC-HTML-1.6.28.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.27 source ZIP
+      - name: Package authoritative Veðurspá 1.6.28 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -384,16 +438,37 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.27-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.28-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.27-complete-source.zip | tail -1
+          unzip -t Vedurspa-1.6.28-complete-source.zip | tail -1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.27-source
-          path: Vedurspa-1.6.27-complete-source.zip
+          name: Vedurspa-1.6.28-source
+          path: Vedurspa-1.6.28-complete-source.zip
           if-no-files-found: error
+
+      - name: Publish verified v1.6.28 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.28-update-smoke' && github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.6.28 >/dev/null 2>&1; then
+            gh release upload v1.6.28 app/Vedurspa-1.6.28.apk Vedurspa-PC-HTML-1.6.28.zip Vedurspa-1.6.28-complete-source.zip --clobber
+          else
+            gh release create v1.6.28 \
+              app/Vedurspa-1.6.28.apk \
+              Vedurspa-PC-HTML-1.6.28.zip \
+              Vedurspa-1.6.28-complete-source.zip \
+              --target "$GITHUB_SHA" \
+              --title "Veðurspá 1.6.28 — Update test" \
+              --notes-file app/RELEASE_NOTES_1.6.28.md \
+              --latest
+          fi
+          gh release view v1.6.28 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
