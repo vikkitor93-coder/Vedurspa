@@ -910,6 +910,11 @@ jobs:
                   updated.append("assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warning counts remain in accessibility summary');")
               else: updated.append(line)
           p.write_text(chr(10).join(updated)+chr(10))
+          p=root/'tests/layoutLocation.test.ts'
+          oldTest=p.read_text()
+          # The larger header icon has a 9-unit tap target now.
+          assert 'assert.match(banner,/h-8/);' in oldTest or 'assert.match(banner,/h-9/);' in oldTest
+          p.write_text(oldTest.replace('assert.match(banner,/h-8/);','assert.match(banner,/h-9/);'))
           (root/'RELEASE_NOTES_1.6.35.md').write_text("""# Veðurspá 1.6.35 — Update progress and warning header refinement
           
           - Android app updater shows download percentage, downloaded/total MB and an indeterminate loading bar when size is unknown.
