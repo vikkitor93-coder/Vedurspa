@@ -398,6 +398,23 @@ jobs:
           (root/'BUILD_INFO.md').write_text('# Veðurspá 1.6.29\n\nNative updater + corrected adaptive launcher. Android versionCode 36. GitHub CI is build authority.\n')
           (root/'TEST_RESULTS.md').write_text('# Veðurspá 1.6.29\n\nGitHub Actions checks: TypeScript, npm tests, Android signing and badging, Windows Go, source ZIP; on-device install still pending.\n')
           PY
+          # Migrate the v1.6.27 test from obsolete manual download buttons to the new
+          # native single-action install flow; preserve all release API assertions.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/tests/v1627Updater.test.mjs')
+          s=p.read_text()
+          i=s.index('assert.match(panel, /Uppfærsla')
+          j=s.index('assert.match(util, /const RELEASES_API',i)
+          s=s[:i]+"""assert.match(panel, /Uppfærslur/, 'settings should expose compact update section');
+          assert.match(panel, /Athuga uppfærslu/, 'should include explicit update check');
+          assert.match(panel, /Setja upp uppfærslu núna/, 'should expose native install action');
+          assert.match(panel, /openAndroidInstaller/, 'should open Android installer after download');
+          assert.match(panel, /Hvað er nýtt/, 'should retain release notes');
+          """+s[j:]
+          p.write_text(s)
+          PY
+          node app/tests/v1627Updater.test.mjs
           node app/tests/v1629NativeUpdate.test.mjs
           test "$(node -p "require('./app/package.json').version")" = "1.6.29"
 
