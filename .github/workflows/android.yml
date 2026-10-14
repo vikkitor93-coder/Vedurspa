@@ -806,6 +806,13 @@ jobs:
           s=s.replace("assert.match(app,/shared-warning-slot/);","assert.match(app,/aurora-cloud-explainer/);\nassert.doesNotMatch(app,/id=\"shared-warning-slot\"/);")
           s=s.replace("assert.match(banner,/h-6/);","assert.match(banner,/h-8/);")
           p.write_text(s)
+          p=root/'src/components/NorthernLightsBar.tsx'
+          s=p.read_text()
+          assert '`Skýjahula núna: ${cloudCoverPercent}% — veldu stað fyrir bestu spá`' in s
+          s=s.replace('`Skýjahula núna: ${cloudCoverPercent}% — veldu stað fyrir bestu spá`','`Veldu stað til að sjá áreiðanlegt skýjahlutfall`')
+          s=s.replace('`Skýjahula núna ${cloudCoverPercent}%, veldu stað fyrir bestu spá`','`Veldu stað til að sjá besta skyggnið og skýjahlutfall`')
+          s=s.replace('`${cloudCoverPercent}% ský núna`',"userLocation ? '—% ský' : 'Veldu stað' ")
+          p.write_text(s)
           (root/'tests/v1634WarningAuroraSlider.test.mjs').write_text("""import assert from 'node:assert/strict';
           import {readFileSync} from 'node:fs';
           const read=(f)=>readFileSync(new URL('../'+f,import.meta.url),'utf8');
@@ -820,6 +827,7 @@ jobs:
           assert.match(banner,/weather-warning-emboss/);
           assert.match(css,/prefers-reduced-motion:reduce/);
           assert.match(aurora,/bestTimeInfo.cloudPercent/);
+          assert.doesNotMatch(aurora,/\$\{cloudCoverPercent\}% ský núna/,'No fabricated cloud percentage before location is chosen');
           assert.match(slider,/slider-time-tooltip/);
           assert.equal(JSON.parse(read('package.json')).version,'1.6.34');
           console.log('1.6.34 warning, aurora, cloud and slider regression PASS');
