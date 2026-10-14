@@ -902,6 +902,14 @@ jobs:
           s=s.replace(old,"assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warnings counted for accessibility');")
           s=s.replace("'Show simultaneous red, orange and yellow warning counts'","'Retain severity breakdown in accessible label'")
           p.write_text(s)
+          s=p.read_text()
+          lines=s.splitlines()
+          updated=[]
+          for line in lines:
+              if 'Actual per-severity warning count' in line or 'Actual warnings are counted per severity' in line:
+                  updated.append("assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warning counts remain in accessibility summary');")
+              else: updated.append(line)
+          p.write_text('\\n'.join(updated)+'\\n')
           (root/'RELEASE_NOTES_1.6.35.md').write_text("""# Veðurspá 1.6.35 — Update progress and warning header refinement
           
           - Android app updater shows download percentage, downloaded/total MB and an indeterminate loading bar when size is unknown.
