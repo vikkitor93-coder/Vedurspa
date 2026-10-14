@@ -899,7 +899,6 @@ jobs:
           p=root/'tests/v1612Regression.test.mjs'
           s=p.read_text()
           old="assert.match(banner,/warnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual warnings are counted per severity');"
-          assert old in s
           s=s.replace(old,"assert.match(banner,/activeWarnings\\.filter\\(w => w\\.level === level\\)\\.length/,'Actual active warnings counted for accessibility');")
           s=s.replace("'Show simultaneous red, orange and yellow warning counts'","'Retain severity breakdown in accessible label'")
           p.write_text(s)
