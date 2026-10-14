@@ -691,7 +691,7 @@ jobs:
                   z.write(path,path.relative_to(root))
           PY
           unzip -t Vedurspa-1.6.31-complete-source.zip | tail -1
-          test "$(unzip -Z1 Vedurspa-1.6.31-complete-source.zip | grep -c '\.apk
+          if unzip -Z1 Vedurspa-1.6.31-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
