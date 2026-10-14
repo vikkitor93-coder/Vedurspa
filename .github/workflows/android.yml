@@ -634,7 +634,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish verified v1.6.30 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.30-native-updater' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.30-final-icon-ui' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -648,7 +648,7 @@ jobs:
               Vedurspa-PC-HTML-1.6.30.zip \
               Vedurspa-1.6.30-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.30 — Update test" \
+              --title "Veðurspá 1.6.30 — Approved icon and compact updater" \
               --notes-file app/RELEASE_NOTES_1.6.30.md \
               --latest
           fi
