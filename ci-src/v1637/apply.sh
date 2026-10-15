@@ -29,6 +29,8 @@ for path in (root/'tests').glob('*'):
     if path.suffix not in ('.mjs','.tsx','.ts'):continue
     s=path.read_text().replace('1.6.36','1.6.37').replace('versionCode 43','versionCode 44')
     s=s.replace(r'1\.6\.36',r'1\.6\.37')
+    if path.name=='v1636UpdateBadge.test.ts':
+        s=s.replace("{version:'1.6.37'},'1.6.37'), true", "{version:'1.6.38'},'1.6.37'), true")
     path.write_text(s)
 PY
 python3 -m py_compile app/ci/patch_android.py app/ci/emit_licenses.py
