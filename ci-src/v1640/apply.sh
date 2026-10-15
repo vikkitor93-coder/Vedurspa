@@ -135,6 +135,13 @@ edit('src/index.css','.station-map-nav {padding:0;gap:3px;display:grid;grid-temp
 for filename in ('v1635HeaderWarning.test.mjs','v1639InfoHub.test.mjs'):
  p=R/'tests'/filename;s=p.read_text().replace('1.6.39','1.6.40').replace(r'1\.6\.39',r'1\.6\.40');p.write_text(s)
 p=R/'tests/v1631LanguageGuide.test.mjs';s=p.read_text().replace('assert.match(app,/hasCompletedGuide/);','assert.doesNotMatch(app,/hasCompletedGuide\\(\\)/);').replace('assert.match(header,/btn-app-guide/);','assert.doesNotMatch(header,/btn-app-guide/);');p.write_text(s)
+# Update the native-map lifecycle test double for the new opt-in bridge method.
+p=R/'tests/stationKeepAlive.test.mjs';st=p.read_text()
+needle="goHome:async()=>{calls.push(['goHome']);},addListener:"
+assert needle in st
+st=st.replace(needle,"goHome:async()=>{calls.push(['goHome']);},setLocationMarker:async()=>({enabled:false}),addListener:")
+st=st.replace("'lucide-react':{ArrowLeft:()=>null}","'lucide-react':{ArrowLeft:()=>null,LocateFixed:()=>null}")
+p.write_text(st)
 p=R/'tests/v1640GpsGuide.test.mjs'
 p.write_text("""import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
