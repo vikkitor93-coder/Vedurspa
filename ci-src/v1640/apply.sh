@@ -30,7 +30,7 @@ gps_js="""(function(){
  const ll=project(llLat,llLon),tr=project(trLat,trLon),pt=project(lat,lon),dx=tr.x-ll.x;
  if(Math.abs(dx)<1e-9)return {visible:false,reason:'degenerate'};
  const w=Number(v.wmapWidth)||width,h=Number(v.wmapHeight)||height;
- let x=1+(w-1)*(pt.x-ll.x)/dx,y=h-(1+(w-1)*(ll.y-pt.y)/dx));
+ let x=1+(w-1)*(pt.x-ll.x)/dx,y=h-(1+(w-1)*(ll.y-pt.y)/dx);
  if(national&&Math.abs(w-540)<2&&Math.abs(h-390)<2){x=x*1.00458-4.19;y=y*1.00403+6.79;}
  x*=width/w;y*=height/h;
  if(!(x>=0&&x<=width&&y>=0&&y<=height))return {visible:false,reason:'outside-this-map'};
@@ -124,7 +124,7 @@ button="""    {onOpenStations && <button type="button" onClick={onOpenStations} 
     <button id="station-gps-button" type="button" onClick={toggleGps}
       disabled={!Capacitor.isNativePlatform()||isLocating} aria-pressed={gpsEnabled}
       aria-label={gpsEnabled?'Fela GPS staðsetningu':'Sýna mína staðsetningu á korti'}
-      className={\`w-11 h-11 shrink-0 rounded-lg border flex items-center justify-center disabled:opacity-50 \${gpsEnabled?'bg-cyan-800 border-cyan-300 text-white':'bg-slate-800 border-slate-600 text-white'}\`}>
+      className={`w-11 h-11 shrink-0 rounded-lg border flex items-center justify-center disabled:opacity-50 ${gpsEnabled?'bg-cyan-800 border-cyan-300 text-white':'bg-slate-800 border-slate-600 text-white'}`}>
       <LocateFixed className="w-5 h-5"/>
     </button>"""
 edit('src/components/OfficialStationMapFrame.tsx',anchor,button)
