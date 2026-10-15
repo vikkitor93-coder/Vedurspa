@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.36-launch-update-badges]
+    branches: [main, ci-build-vedurspa-1.6.37-legal-attribution]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -864,9 +864,20 @@ jobs:
         shell: bash
         run: bash ci-src/v1636/apply.sh
 
+      - name: Apply 1.6.37 source provenance and legal changes
+        shell: bash
+        run: bash ci-src/v1637/apply.sh
+
       - name: Install dependencies
         working-directory: app
         run: npm install --no-audit --no-fund
+
+      - name: Bundle installed third-party license notices
+        shell: bash
+        working-directory: app
+        run: |
+          python3 ci/emit_licenses.py
+          test -s public/third-party-notices.txt
 
       - name: Check web app
         working-directory: app
@@ -898,14 +909,14 @@ jobs:
           grep -Fi "273b709d3ed9a5376d9d1f14811c7d1a13c52a04d4266b5a7eeb9a85e9e7841d" /tmp/apksigner.txt
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -F "package: name='is.viktor.vedurspa' versionCode='43' versionName='1.6.36'" /tmp/badging.txt
-          cp "$APK" Vedurspa-1.6.36.apk
-          sha256sum Vedurspa-1.6.36.apk
+          grep -F "package: name='is.viktor.vedurspa' versionCode='44' versionName='1.6.37'" /tmp/badging.txt
+          cp "$APK" Vedurspa-1.6.37.apk
+          sha256sum Vedurspa-1.6.37.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.36
-          path: app/Vedurspa-1.6.36.apk
+          name: Vedurspa-1.6.37
+          path: app/Vedurspa-1.6.37.apk
           if-no-files-found: error
 
       - uses: actions/setup-go@v5
@@ -922,17 +933,17 @@ jobs:
           (cd ci && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o ../../pc-bundle/Vedurspa-PC.exe .)
           printf '@echo off\r\ncd /d "%%~dp0"\r\nVedurspa-PC.exe\r\n' > "../pc-bundle/Start Veðurspá.bat"
           cp "../pc-bundle/Start Veðurspá.bat" "../pc-bundle/Start-Vedurspa.bat"
-          printf 'Veðurspá 1.6.36 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
-          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.36.zip .)
-          unzip -t ../Vedurspa-PC-HTML-1.6.36.zip | tail -n 1
+          printf 'Veðurspá 1.6.37 for Windows. Extract everything. Double-click Start-Vedurspa.bat. The launcher serves web files on 127.0.0.1 only and proxies https://vedur.is. Requires internet for live weather.\n' > ../pc-bundle/README.txt
+          (cd ../pc-bundle && zip -qr ../Vedurspa-PC-HTML-1.6.37.zip .)
+          unzip -t ../Vedurspa-PC-HTML-1.6.37.zip | tail -n 1
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-PC-HTML-1.6.36
-          path: Vedurspa-PC-HTML-1.6.36.zip
+          name: Vedurspa-PC-HTML-1.6.37
+          path: Vedurspa-PC-HTML-1.6.37.zip
           if-no-files-found: error
 
-      - name: Package authoritative Veðurspá 1.6.36 source ZIP
+      - name: Package authoritative Veðurspá 1.6.37 source ZIP
         shell: bash
         run: |
           mkdir -p app/.github/workflows
@@ -942,38 +953,38 @@ jobs:
           from zipfile import ZipFile,ZIP_DEFLATED
           root=Path('app')
           excluded={'node_modules','dist','android','.git','build','__pycache__','.gradle','pc-bundle'}
-          with ZipFile('Vedurspa-1.6.36-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
+          with ZipFile('Vedurspa-1.6.37-complete-source.zip','w',ZIP_DEFLATED,strict_timestamps=False) as z:
               for path in sorted(root.rglob('*')):
                   if not path.is_file() or any(part in excluded for part in path.parts) or path.name.endswith(('.pyc','.log','.tmp','.apk')):
                       continue
                   z.write(path,path.relative_to(root))
           PY
-          unzip -t Vedurspa-1.6.36-complete-source.zip | tail -1
-          if unzip -Z1 Vedurspa-1.6.36-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
+          unzip -t Vedurspa-1.6.37-complete-source.zip | tail -1
+          if unzip -Z1 Vedurspa-1.6.37-complete-source.zip | grep -q '\.apk'; then echo 'Unexpected APK in source ZIP'; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Vedurspa-1.6.36-source
-          path: Vedurspa-1.6.36-complete-source.zip
+          name: Vedurspa-1.6.37-source
+          path: Vedurspa-1.6.37-complete-source.zip
           if-no-files-found: error
 
-      - name: Publish verified v1.6.36 release and patch notes
-        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.36-launch-update-badges' && github.event_name == 'push'
+      - name: Publish verified v1.6.37 release and patch notes
+        if: github.ref == 'refs/heads/ci-build-vedurspa-1.6.37-legal-attribution' && github.event_name == 'push'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if gh release view v1.6.36 >/dev/null 2>&1; then
-            gh release upload v1.6.36 app/Vedurspa-1.6.36.apk Vedurspa-PC-HTML-1.6.36.zip Vedurspa-1.6.36-complete-source.zip --clobber
+          if gh release view v1.6.37 >/dev/null 2>&1; then
+            gh release upload v1.6.37 app/Vedurspa-1.6.37.apk Vedurspa-PC-HTML-1.6.37.zip Vedurspa-1.6.37-complete-source.zip --clobber
           else
-            gh release create v1.6.36 \
-              app/Vedurspa-1.6.36.apk \
-              Vedurspa-PC-HTML-1.6.36.zip \
-              Vedurspa-1.6.36-complete-source.zip \
+            gh release create v1.6.37 \
+              app/Vedurspa-1.6.37.apk \
+              Vedurspa-PC-HTML-1.6.37.zip \
+              Vedurspa-1.6.37-complete-source.zip \
               --target "$GITHUB_SHA" \
-              --title "Veðurspá 1.6.36 — Aurora clarity, warnings and slider time" \
-              --notes-file app/RELEASE_NOTES_1.6.36.md \
+              --title "Veðurspá 1.6.37 — Source attribution and legal transparency" \
+              --notes-file app/RELEASE_NOTES_1.6.37.md \
               --latest
           fi
-          gh release view v1.6.36 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
+          gh release view v1.6.37 --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
