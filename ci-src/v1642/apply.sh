@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 base64 -d ci-src/v1642/modifications.patch.gz.b64 > /tmp/v1642-modifications.patch.gz
-echo 'b0880f5f30abc1dc94eeefac98b2d810d3ecf6398fa217bbe079a38464934fd5  ci-src/v1642/modifications.patch.gz.b64' | sha256sum -c -
-echo '107c01514535777685d6e18b4c3668937c69b047a0adc4e98b3687093d272a28  ci-src/v1642/newfiles.tar.gz.b64' | sha256sum -c -
+echo '5f5a1a768e58148a48ad7b448787b15ef6492705f58271637d1b2d0d451bedff  ci-src/v1642/modifications.patch.gz.b64' | sha256sum -c -
+echo '1d23b95e6dc5e222c1903d7a01034f69a763a57cedf968164db507ad66898310  ci-src/v1642/newfiles.tar.gz.b64' | sha256sum -c -
 gzip -dc /tmp/v1642-modifications.patch.gz > /tmp/v1642-modifications.patch
 patch --batch --fuzz=0 -p1 -d app < /tmp/v1642-modifications.patch
 base64 -d ci-src/v1642/newfiles.tar.gz.b64 | tar -xzf - -C app
