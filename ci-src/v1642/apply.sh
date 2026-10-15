@@ -50,8 +50,8 @@ pattern=r'(?m)^(export const StationForecastPanel: React\.FC<Props> = \(\{[^\n]*
 s,n=re.subn(pattern,lambda m:m.group(1).rstrip()+',stationMapMode="official",autoRegionSwitch=true }) => {',s,count=1)
 if n!=1:raise AssertionError('StationForecastPanel signature missing')
 # Earlier CI layout omitted the information callback in the station signature.
-sig=re.search(r'(?m)^export const StationForecastPanel: React\\.FC<Props> = \\(\\{[^\\n]+',s)
-if sig and 'onOpenInfo' not in sig.group(0):
+sig=s.split('export const StationForecastPanel: React.FC<Props> = ({',1)[1].split('}) =>',1)[0]
+if 'onOpenInfo' not in sig:
     s=s.replace(',stationMapMode="official",autoRegionSwitch=true }) => {',',onOpenInfo,stationMapMode="official",autoRegionSwitch=true }) => {',1)
 if 'onOpenInfo?:()=>void' not in s:
     s=s.replace('interface Props {','interface Props { onOpenInfo?:()=>void;',1)
@@ -65,7 +65,7 @@ if not match:raise AssertionError('OfficialStationMapFrame single-line marker ab
 space=match.group(1);old=match.group(0)
 new=(space+"{stationMapMode==='continuous' ? (\n"
 +space+"  <ContinuousStationMap active={active} stations={data?.stations||[]} data={data} timestamp={controlTimestamp} userLocation={userLocation} onRequestGps={onRequestGps} isLocating={isLocating} onOpenStations={()=>setDetailOpen(true)} onSelectStation={station=>choose(station)} onOpenInfo={onOpenInfo} />\n"
-+space+") : (\n"+space+"  <OfficialStationMapFrame "+match.group(2)+" stationMapMode={stationMapMode as "official"|"auto"} autoRegionSwitch={autoRegionSwitch} />\n"
++space+") : (\n"+space+"  <OfficialStationMapFrame "+match.group(2)+" stationMapMode={stationMapMode as 'official'|'auto'} autoRegionSwitch={autoRegionSwitch} />\n"
 +space+")}")
 p.write_text(s.replace(old,new,1))
 p=R/'src/components/OfficialStationMapFrame.tsx';s=p.read_text()
