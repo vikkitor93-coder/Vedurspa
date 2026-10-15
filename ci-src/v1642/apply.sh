@@ -44,8 +44,12 @@ upd('src/components/StationForecastPanel.tsx','import { OfficialStationMapFrame 
  'import { OfficialStationMapFrame } from "./OfficialStationMapFrame";\nimport { ContinuousStationMap } from "./ContinuousStationMap";\nimport type {StationMapMode} from "../utils/stationMapMode";')
 upd('src/components/StationForecastPanel.tsx','interface Props { active?:boolean;',
  'interface Props { stationMapMode?:StationMapMode;autoRegionSwitch?:boolean;active?:boolean;')
-upd('src/components/StationForecastPanel.tsx','onOpenInfo, onInfoMetaChange }) => {',
- 'onOpenInfo, onInfoMetaChange,stationMapMode="official",autoRegionSwitch=true }) => {')
+p=R/'src/components/StationForecastPanel.tsx';s=p.read_text()
+import re
+pattern=r'(?m)^(export const StationForecastPanel: React\.FC<Props> = \(\{[^\n]*?)\s*\}\) => \{'
+s,n=re.subn(pattern,lambda m:m.group(1).rstrip()+',stationMapMode="official",autoRegionSwitch=true }) => {',s,count=1)
+if n!=1:raise AssertionError('StationForecastPanel signature missing')
+p.write_text(s)
 p=R/'src/components/StationForecastPanel.tsx'
 s=p.read_text()
 import re
