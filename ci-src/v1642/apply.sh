@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 base64 -d ci-src/v1642/modifications.patch.gz.b64 > /tmp/v1642-modifications.patch.gz
-echo 'b0880f5f30abc1dc94eeefac98b2d810d3ecf6398fa217bbe079a38464934fd5  ci-src/v1642/modifications.patch.gz.b64' | sha256sum -c -
-echo '107c01514535777685d6e18b4c3668937c69b047a0adc4e98b3687093d272a28  ci-src/v1642/newfiles.tar.gz.b64' | sha256sum -c -
+echo 'fbbe8cffe5941570bc368738bc3ecc5918ebc5d04fc4f62169be8fc0dbe9b660  /tmp/v1642-modifications.patch.gz' | sha256sum -c -
+base64 -d ci-src/v1642/newfiles.tar.gz.b64 > /tmp/v1642-newfiles.tar.gz
+echo 'fe54f64d12a3c35238becfee70c803ded6a33221be0be8d8afa35f3c80930b03  /tmp/v1642-newfiles.tar.gz' | sha256sum -c -
 gzip -dc /tmp/v1642-modifications.patch.gz > /tmp/v1642-modifications.patch
 # The initial v1.6.42 unified diff was generated against a local prior
 # source tree. Some full-line matches drift in hosted reconstruction.
@@ -22,7 +23,7 @@ if chunk and not bad:sections.append(''.join(chunk))
 Path('/tmp/v1642-safe.patch').write_text(''.join(sections))
 PY
 patch --batch --fuzz=0 -p1 -d app < /tmp/v1642-safe.patch
-base64 -d ci-src/v1642/newfiles.tar.gz.b64 | tar -xzf - -C app
+tar -xzf /tmp/v1642-newfiles.tar.gz -C app
 python3 - <<'PY'
 from pathlib import Path
 R=Path('app')
