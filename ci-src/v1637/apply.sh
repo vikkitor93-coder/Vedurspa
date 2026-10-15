@@ -33,5 +33,12 @@ for path in (root/'tests').glob('*'):
         s=s.replace("{version:'1.6.37'},'1.6.37'), true", "{version:'1.6.38'},'1.6.37'), true")
     path.write_text(s)
 PY
+# Source links must open via the strict official-provider allowlist, not the GitHub-only updater link.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/tests/v1637Compliance.test.tsx')
+s=p.read_text().replace('openExternalReleaseLink\\(summary.url\\)','openSourceLink\\(summary.url\\)')
+p.write_text(s)
+PY
 python3 -m py_compile app/ci/patch_android.py app/ci/emit_licenses.py
 test "$(node -p "require('./app/package.json').version")" = '1.6.37'
