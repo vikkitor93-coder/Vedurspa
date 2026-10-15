@@ -157,6 +157,13 @@ assert.doesNotMatch(app,/hasCompletedGuide\\(\\)/);
 assert.match(r('src/components/AppSettingsPanel.tsx'),/settings-panel-guide/);
 console.log('1.6.40 station GPS / settings-only guide PASS');
 """)
+# Keep pinned historical regressions aligned to this new app version.
+for p in (R/'tests').glob('*'):
+ if p.suffix not in ('.mjs','.ts','.tsx'):continue
+ v=p.read_text().replace('1.6.39','1.6.40').replace(r'1\.6\.39',r'1\.6\.40').replace('versionCode 46','versionCode 47')
+ if p.name=='v1636UpdateBadge.test.ts':
+  v=v.replace("isNewerRelease({version:'1.6.40'},'1.6.40'), true","isNewerRelease({version:'1.6.41'},'1.6.40'), true")
+ p.write_text(v)
 for name in ('package.json','package-lock.json'):
  p=R/name;d=json.loads(p.read_text());assert d['version']=='1.6.39';d['version']='1.6.40'
  if name=='package-lock.json':d['packages']['']['version']='1.6.40'
