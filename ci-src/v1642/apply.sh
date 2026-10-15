@@ -1,11 +1,114 @@
 #!/usr/bin/env bash
 set -euo pipefail
 base64 -d ci-src/v1642/modifications.patch.gz.b64 > /tmp/v1642-modifications.patch.gz
-echo '5f5a1a768e58148a48ad7b448787b15ef6492705f58271637d1b2d0d451bedff  ci-src/v1642/modifications.patch.gz.b64' | sha256sum -c -
-echo '1d23b95e6dc5e222c1903d7a01034f69a763a57cedf968164db507ad66898310  ci-src/v1642/newfiles.tar.gz.b64' | sha256sum -c -
+echo 'b0880f5f30abc1dc94eeefac98b2d810d3ecf6398fa217bbe079a38464934fd5  ci-src/v1642/modifications.patch.gz.b64' | sha256sum -c -
+echo '107c01514535777685d6e18b4c3668937c69b047a0adc4e98b3687093d272a28  ci-src/v1642/newfiles.tar.gz.b64' | sha256sum -c -
 gzip -dc /tmp/v1642-modifications.patch.gz > /tmp/v1642-modifications.patch
-patch --batch --fuzz=0 -p1 -d app < /tmp/v1642-modifications.patch
+# The initial v1.6.42 unified diff was generated against a local prior
+# source tree. Some full-line matches drift in hosted reconstruction.
+# Apply only safe matching hunks and transplant the others by stable anchors.
+python3 - <<'PY'
+from pathlib import Path
+patch=Path('/tmp/v1642-modifications.patch').read_text()
+skip={'src/App.tsx','src/components/StationForecastPanel.tsx','src/components/OfficialStationMapFrame.tsx','native-src/is/viktor/vedurspa/OfficialInlineMapPlugin.java','tests/stationKeepAlive.test.mjs'}
+sections=[];chunk=[];bad=False
+for line in patch.splitlines(keepends=True):
+    if line.startswith('--- a/'):
+        if chunk and not bad: sections.append(''.join(chunk))
+        chunk=[line]
+        bad=line[6:].rstrip() in skip
+    else: chunk.append(line)
+if chunk and not bad:sections.append(''.join(chunk))
+Path('/tmp/v1642-safe.patch').write_text(''.join(sections))
+PY
+patch --batch --fuzz=0 -p1 -d app < /tmp/v1642-safe.patch
 base64 -d ci-src/v1642/newfiles.tar.gz.b64 | tar -xzf - -C app
+python3 - <<'PY'
+from pathlib import Path
+R=Path('app')
+def upd(name,a,b):
+    p=R/name;s=p.read_text()
+    if s.count(a)!=1:raise AssertionError(f"{name} expected one stable anchor, found {s.count(a)}: {a[:100]}")
+    p.write_text(s.replace(a,b,1))
+upd('src/App.tsx',
+' import { DeveloperPanel } from "./components/DeveloperPanel";',
+' import { DeveloperPanel } from "./components/DeveloperPanel";')
+# The import anchor is unique; other components remain untouched.
+upd('src/App.tsx','import { DeveloperPanel } from "./components/DeveloperPanel";',
+ 'import { DeveloperPanel } from "./components/DeveloperPanel";\nimport {readStationMapMode,writeStationMapMode,type StationMapMode} from "./utils/stationMapMode";')
+upd('src/App.tsx','const [developerOpen, setDeveloperOpen] = useState(false);',
+ 'const [developerOpen, setDeveloperOpen] = useState(false);\n  const [stationMapMode,setStationMapMode]=useState<StationMapMode>(readStationMapMode);\n  const chooseStationMapMode=useCallback((mode:StationMapMode)=>{setStationMapMode(mode);writeStationMapMode(mode);},[]);')
+upd('src/App.tsx','onInfoMetaChange={setStationInfoMeta} />',
+ 'onInfoMetaChange={setStationInfoMeta} stationMapMode={appSettings.developerMode?stationMapMode:"official"} autoRegionSwitch={appSettings.autoRegionSwitch} />')
+upd('src/App.tsx','<DeveloperPanel warningLevel={devWarningLevel}',
+ '<DeveloperPanel stationMapMode={stationMapMode} onStationMapMode={chooseStationMapMode} warningLevel={devWarningLevel}')
+upd('src/components/StationForecastPanel.tsx','import { OfficialStationMapFrame } from "./OfficialStationMapFrame";',
+ 'import { OfficialStationMapFrame } from "./OfficialStationMapFrame";\nimport { ContinuousStationMap } from "./ContinuousStationMap";\nimport type {StationMapMode} from "../utils/stationMapMode";')
+upd('src/components/StationForecastPanel.tsx','interface Props { active?:boolean;',
+ 'interface Props { stationMapMode?:StationMapMode;autoRegionSwitch?:boolean;active?:boolean;')
+upd('src/components/StationForecastPanel.tsx','onOpenInfo, onInfoMetaChange }) => {',
+ 'onOpenInfo, onInfoMetaChange,stationMapMode="official",autoRegionSwitch=true }) => {')
+p=R/'src/components/StationForecastPanel.tsx'
+s=p.read_text()
+import re
+needle=r'(?m)^(\s*)<OfficialStationMapFrame (.+?) />$'
+match=re.search(needle,s)
+if not match:raise AssertionError('OfficialStationMapFrame single-line marker absent')
+space=match.group(1);old=match.group(0)
+new=(space+"{stationMapMode==='continuous' ? (\n"
++space+"  <ContinuousStationMap active={active} stations={data?.stations||[]} data={data} timestamp={controlTimestamp} userLocation={userLocation} onRequestGps={onRequestGps} isLocating={isLocating} onOpenStations={()=>setDetailOpen(true)} onSelectStation={station=>choose(station)} onOpenInfo={onOpenInfo} />\n"
++space+") : (\n"+space+"  <OfficialStationMapFrame "+match.group(2)+" stationMapMode={stationMapMode} autoRegionSwitch={autoRegionSwitch} />\n"
++space+")}")
+p.write_text(s.replace(old,new,1))
+upd('src/components/OfficialStationMapFrame.tsx',"import type {UserLocation} from '../types';",
+ "import type {UserLocation} from '../types';\nimport type {StationMapMode} from '../utils/stationMapMode';")
+upd('src/components/OfficialStationMapFrame.tsx',
+ '  setLocationMarker(args:{enabled:boolean;lat?:number;lon?:number}):Promise<{enabled:boolean}>;',
+ '  setLocationMarker(args:{enabled:boolean;lat?:number;lon?:number}):Promise<{enabled:boolean}>;\n  setMapExperience(args:{mode:"official"|"auto";autoSwitchEnabled:boolean}):Promise<void>;')
+upd('src/components/OfficialStationMapFrame.tsx','  isLocating?:boolean;',
+ '  isLocating?:boolean;\n  stationMapMode?:Exclude<StationMapMode,"continuous">;\n  autoRegionSwitch?:boolean;')
+upd('src/components/OfficialStationMapFrame.tsx',
+ 'isLocating=false}: Props) {',
+ 'isLocating=false,stationMapMode="official",autoRegionSwitch=true}: Props) {')
+upd('src/components/OfficialStationMapFrame.tsx',
+ '  // GPS is opt-in.',
+ '  // Developer variant is carried into the original native WebView.\n  useEffect(()=>{\n    if(!Capacitor.isNativePlatform())return;\n    void inline.setMapExperience({mode:stationMapMode,autoSwitchEnabled:autoRegionSwitch}).catch(()=>{});\n  },[stationMapMode,autoRegionSwitch,active]);\n  // GPS is opt-in.')
+p=R/'native-src/is/viktor/vedurspa/OfficialInlineMapPlugin.java';s=p.read_text()
+if s.count('private boolean regionMode = false;')!=1:raise AssertionError('regionMode anchor')
+s=s.replace('private boolean regionMode = false;','private boolean regionMode = false;\n    private String stationExperience="official";\n    private boolean autoSwitchEnabled=true;',1)
+anchor='    /** Public in-frame navigation without losing the app or its forecast controls. */'
+method="""    @PluginMethod public void setMapExperience(PluginCall call) {
+        String mode=call.getString("mode","official");
+        if(!"official".equals(mode)&&!"auto".equals(mode)){call.reject("Invalid map experience");return;}
+        final boolean enabled=Boolean.TRUE.equals(call.getBoolean("autoSwitchEnabled",true));
+        getActivity().runOnUiThread(()->{
+            stationExperience=mode;autoSwitchEnabled=enabled;
+            syncMapExperience();call.resolve();
+        });
+    }
+    private void syncMapExperience() {
+        if(original==null||!loadState.canFit())return;
+        final String config="window.__vedurspaStationMode="+JSONObject.quote(stationExperience)+
+            ";window.__vedurspaAutoSwitchEnabled="+(autoSwitchEnabled?"true":"false")+";\\n";
+        original.evaluateJavascript(config+OfficialMapAutoRegions.JAVASCRIPT,result->{});
+    }
+
+"""
+if s.count(anchor)!=1:raise AssertionError('native plugin anchor missing')
+s=s.replace(anchor,method+anchor,1)
+needle='                    syncLocationMarker();'
+if s.count(needle)<1:raise AssertionError('native ready marker missing')
+s=s.replace(needle,needle+'\n                    syncMapExperience();',1)
+p.write_text(s)
+p=R/'tests/stationKeepAlive.test.mjs'
+s=p.read_text()
+if 'setMapExperience:async()=>{}' not in s:
+  needle='goHome:async()=>'
+  if s.count(needle)!=1:raise AssertionError('mock goHome anchor')
+  s=s.replace(needle,'setMapExperience:async()=>{},'+needle,1)
+p.write_text(s)
+print('v1642 stable-anchor amendments applied')
+PY
 python3 app/ci/generate_official_map_auto.py
 python3 - <<'PY'
 import json
