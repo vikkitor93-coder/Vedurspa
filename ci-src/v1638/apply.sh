@@ -76,6 +76,8 @@ for p in (root/'tests').glob('*'):
     if p.name=='v1638StationMapRegression.test.mjs' or p.suffix not in ('.mjs','.ts','.tsx'):continue
     s=p.read_text().replace('1.6.37','1.6.38').replace('versionCode 44','versionCode 45')
     if p.name in ('v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs'):s=s.replace(r'1\.6\.37',r'1\.6\.38')
+    if p.name=='v1636UpdateBadge.test.ts':
+        s=s.replace("isNewerRelease({version:'1.6.38'},'1.6.38'), true", "isNewerRelease({version:'1.6.39'},'1.6.38'), true")
     p.write_text(s)
 (root/'RELEASE_NOTES_1.6.38.md').write_text('# Veðurspá 1.6.38 — Staðaspá map restoration\n\n- Restore blank Staðaspá native WebView by removing a non-flex frame wrapper introduced by 1.6.37.\n- Keep map full height; move source attribution to the pre-existing date/time row, outside the Android native WebView.\n- Suspend the native map when attribution dialog opens; restore it on close.\n- Preserve legal/source metadata, maps, themes, guides and updater.\n')
 (root/'AI_HANDOFF.md').write_text('''# AI_HANDOFF — Veðurspá 1.6.38
