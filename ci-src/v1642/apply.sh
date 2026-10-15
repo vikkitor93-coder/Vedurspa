@@ -62,19 +62,37 @@ new=(space+"{stationMapMode==='continuous' ? (\n"
 +space+") : (\n"+space+"  <OfficialStationMapFrame "+match.group(2)+" stationMapMode={stationMapMode} autoRegionSwitch={autoRegionSwitch} />\n"
 +space+")}")
 p.write_text(s.replace(old,new,1))
-upd('src/components/OfficialStationMapFrame.tsx',"import type {UserLocation} from '../types';",
- "import type {UserLocation} from '../types';\nimport type {StationMapMode} from '../utils/stationMapMode';")
-upd('src/components/OfficialStationMapFrame.tsx',
- '  setLocationMarker(args:{enabled:boolean;lat?:number;lon?:number}):Promise<{enabled:boolean}>;',
- '  setLocationMarker(args:{enabled:boolean;lat?:number;lon?:number}):Promise<{enabled:boolean}>;\n  setMapExperience(args:{mode:"official"|"auto";autoSwitchEnabled:boolean}):Promise<void>;')
-upd('src/components/OfficialStationMapFrame.tsx','  isLocating?:boolean;',
- '  isLocating?:boolean;\n  stationMapMode?:Exclude<StationMapMode,"continuous">;\n  autoRegionSwitch?:boolean;')
-upd('src/components/OfficialStationMapFrame.tsx',
- 'isLocating=false}: Props) {',
- 'isLocating=false,stationMapMode="official",autoRegionSwitch=true}: Props) {')
-upd('src/components/OfficialStationMapFrame.tsx',
- '  // GPS is opt-in.',
- '  // Developer variant is carried into the original native WebView.\n  useEffect(()=>{\n    if(!Capacitor.isNativePlatform())return;\n    void inline.setMapExperience({mode:stationMapMode,autoSwitchEnabled:autoRegionSwitch}).catch(()=>{});\n  },[stationMapMode,autoRegionSwitch,active]);\n  // GPS is opt-in.')
+p=R/'src/components/OfficialStationMapFrame.tsx';s=p.read_text()
+if 'import type {StationMapMode}' not in s:
+    s="import type {StationMapMode} from '../utils/stationMapMode';\n"+s
+if 'setMapExperience(args:' not in s:
+    import re
+    # Insert into the real InlinePlugin interface, regardless of prior formatting.
+    pattern=r'(  setLocationMarker\([^\n]*\);)'
+    s,n=re.subn(pattern,lambda m:m.group(1)+'\n  setMapExperience(args:{mode:"official"|"auto";autoSwitchEnabled:boolean}):Promise<void>;',s,count=1)
+    if n==0:
+        s,n=re.subn(r'(?m)^(\s*toggleStationControls\([^\n]*;)',lambda m:m.group(1)+'\n  setMapExperience(args:{mode:"official"|"auto";autoSwitchEnabled:boolean}):Promise<void>;',s,count=1)
+    if n!=1:raise AssertionError('InlinePlugin insertion point absent')
+if 'stationMapMode?:Exclude<StationMapMode' not in s:
+    s,n=re.subn(r'(interface Props\s*\{)',lambda m:m.group(1)+'\n  stationMapMode?:Exclude<StationMapMode,"continuous">;\n  autoRegionSwitch?:boolean;',s,count=1)
+    if n!=1:raise AssertionError('Official Props declaration missing')
+if 'stationMapMode="official",autoRegionSwitch=true' not in s:
+    pattern=r'(export function OfficialStationMapFrame\(\{[^\n]*?)\s*\}: Props\) \{'
+    s,n=re.subn(pattern,lambda m:m.group(1).rstrip()+',stationMapMode="official",autoRegionSwitch=true}: Props) {',s,count=1)
+    if n!=1:raise AssertionError('OfficialStationMapFrame function missing')
+if 'inline.setMapExperience(' not in s:
+    anchor='  // GPS is opt-in.'
+    effect="""  useEffect(()=>{
+    if(!Capacitor.isNativePlatform())return;
+    void inline.setMapExperience({mode:stationMapMode,autoSwitchEnabled:autoRegionSwitch}).catch(()=>{});
+  },[stationMapMode,autoRegionSwitch,active]);
+"""
+    if anchor in s:s=s.replace(anchor,effect+anchor,1)
+    else:
+        anchor='  const toggleGps='
+        if anchor not in s:raise AssertionError('GPS effect insertion missing')
+        s=s.replace(anchor,effect+anchor,1)
+p.write_text(s)
 p=R/'native-src/is/viktor/vedurspa/OfficialInlineMapPlugin.java';s=p.read_text()
 if s.count('private boolean regionMode = false;')!=1:raise AssertionError('regionMode anchor')
 s=s.replace('private boolean regionMode = false;','private boolean regionMode = false;\n    private String stationExperience="official";\n    private boolean autoSwitchEnabled=true;',1)
