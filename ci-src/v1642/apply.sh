@@ -74,11 +74,16 @@ if 'setMapExperience(args:' not in s:
         s,n=re.subn(r'(?m)^(\s*toggleStationControls\([^\n]*;)',lambda m:m.group(1)+'\n  setMapExperience(args:{mode:"official"|"auto";autoSwitchEnabled:boolean}):Promise<void>;',s,count=1)
     if n!=1:raise AssertionError('InlinePlugin insertion point absent')
 if 'stationMapMode?:Exclude<StationMapMode' not in s:
-    s,n=re.subn(r'(interface Props\s*\{)',lambda m:m.group(1)+'\n  stationMapMode?:Exclude<StationMapMode,"continuous">;\n  autoRegionSwitch?:boolean;',s,count=1)
-    if n!=1:raise AssertionError('Official Props declaration missing')
+    pattern=r'(interface Props\s*\{)'
+    s,n=re.subn(pattern,lambda m:m.group(1)+'\n  stationMapMode?:Exclude<StationMapMode,"continuous">;\n  autoRegionSwitch?:boolean;',s,count=1)
+    if n==0:
+        # Earlier CI reconstructs with inline props instead of a Props interface.
+        needle='isLocating?:boolean}'
+        if needle not in s:raise AssertionError('Official inline props declaration missing')
+        s=s.replace(needle,'isLocating?:boolean;stationMapMode?:Exclude<StationMapMode,"continuous">;autoRegionSwitch?:boolean}',1)
 if 'stationMapMode="official",autoRegionSwitch=true' not in s:
-    pattern=r'(export function OfficialStationMapFrame\(\{[^\n]*?)\s*\}: Props\) \{'
-    s,n=re.subn(pattern,lambda m:m.group(1).rstrip()+',stationMapMode="official",autoRegionSwitch=true}: Props) {',s,count=1)
+    pattern=r'(export function OfficialStationMapFrame\(\{[^\n]*?)\s*\}:(\{[^\n]*?\}|Props)\) \{'
+    s,n=re.subn(pattern,lambda m:m.group(1).rstrip()+',stationMapMode="official",autoRegionSwitch=true}:'+m.group(2)+') {',s,count=1)
     if n!=1:raise AssertionError('OfficialStationMapFrame function missing')
 if 'inline.setMapExperience(' not in s:
     anchor='  // GPS is opt-in.'
