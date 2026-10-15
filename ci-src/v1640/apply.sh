@@ -157,6 +157,11 @@ assert.doesNotMatch(app,/hasCompletedGuide\\(\\)/);
 assert.match(r('src/components/AppSettingsPanel.tsx'),/settings-panel-guide/);
 console.log('1.6.40 station GPS / settings-only guide PASS');
 """)
+# The Guide is now accessed from Settings only, not a main-header shortcut.
+p=R/'tests/v1633SettingsTabs.test.mjs';v=p.read_text()
+v=v.replace("assert.match(app,/setSettingsInitialSection\\('guide'\\)/);",
+            "assert.doesNotMatch(read('src/components/CompactHeader.tsx'),/btn-app-guide/);")
+p.write_text(v)
 # Keep pinned historical regressions aligned to this new app version.
 for p in (R/'tests').glob('*'):
  if p.suffix not in ('.mjs','.ts','.tsx'):continue
