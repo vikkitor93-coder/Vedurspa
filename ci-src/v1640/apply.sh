@@ -98,10 +98,11 @@ edit('src/App.tsx','GuidedTour, hasCompletedGuide, markGuideComplete, type Guide
 p=R/'src/App.tsx';s=p.read_text()
 s='\n'.join(line for line in s.split('\n') if 'if(hasCompletedGuide())return' not in line and 'onOpenGuide={()' not in line)
 p.write_text(s)
-edit('src/components/OfficialStationMapFrame.tsx',"import { ArrowLeft, Info } from 'lucide-react';","import { ArrowLeft, Info, LocateFixed } from 'lucide-react';\nimport type { UserLocation } from '../types';")
+edit('src/components/OfficialStationMapFrame.tsx',"import { ArrowLeft } from 'lucide-react';","import { ArrowLeft, LocateFixed } from 'lucide-react';\nimport type { UserLocation } from '../types';")
 edit('src/components/OfficialStationMapFrame.tsx','  toggleStationControls():Promise<void>;','  toggleStationControls():Promise<void>;\n  setLocationMarker(args:{enabled:boolean;lat?:number;lon?:number}):Promise<{enabled:boolean}>;')
-edit('src/components/OfficialStationMapFrame.tsx','  onOpenInfo?: () => void;','  onOpenInfo?: () => void;\n  userLocation?:UserLocation|null;\n  onRequestGps?:()=>void;\n  isLocating?:boolean;')
-edit('src/components/OfficialStationMapFrame.tsx','suspended=false, onOpenStations, onOpenInfo}: Props)', 'suspended=false, onOpenStations, onOpenInfo, userLocation, onRequestGps, isLocating=false}: Props)')
+edit('src/components/OfficialStationMapFrame.tsx',
+ 'export function OfficialStationMapFrame({timestamp, refreshToken=0,active=true,suspended=false,onOpenStations}:{refreshToken?:number;active?:boolean;onOpenStations?:()=>void;timestamp?:string; suspended?:boolean}) {',
+ 'export function OfficialStationMapFrame({timestamp, refreshToken=0,active=true,suspended=false,onOpenStations,userLocation,onRequestGps,isLocating=false}:{refreshToken?:number;active?:boolean;onOpenStations?:()=>void;timestamp?:string;suspended?:boolean;userLocation?:UserLocation|null;onRequestGps?:()=>void;isLocating?:boolean}) {')
 edit('src/components/OfficialStationMapFrame.tsx','  const [regionMode,setRegionMode]=useState(false);','  const [regionMode,setRegionMode]=useState(false);\n  const [gpsEnabled,setGpsEnabled]=useState(false);')
 anchor='  // Our normal Staðaspá timeline drives the original widget (not a decorative duplicate).'
 effect="""  // Position is projected inside the native WebView's original map image. Never
@@ -128,7 +129,7 @@ button="""    {onOpenStations && <button type="button" onClick={onOpenStations} 
       <LocateFixed className="w-5 h-5"/>
     </button>"""
 edit('src/components/OfficialStationMapFrame.tsx',anchor,button)
-edit('src/components/StationForecastPanel.tsx','onOpenStations={()=>setDetailOpen(true)} onOpenInfo={onOpenInfo} />','onOpenStations={()=>setDetailOpen(true)} onOpenInfo={onOpenInfo} userLocation={userLocation} onRequestGps={onRequestGps} isLocating={isLocating} />')
+edit('src/components/StationForecastPanel.tsx','onOpenStations={()=>setDetailOpen(true)} />','onOpenStations={()=>setDetailOpen(true)} userLocation={userLocation} onRequestGps={onRequestGps} isLocating={isLocating} />')
 edit('src/index.css','.station-map-nav {padding:0;gap:3px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}', '.station-map-nav {padding:0;gap:3px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) 44px;}')
 # Target the recent exact-version assertions; leave historical v1.6.39 comparison cases in place.
 for filename in ('v1635HeaderWarning.test.mjs','v1639InfoHub.test.mjs'):
