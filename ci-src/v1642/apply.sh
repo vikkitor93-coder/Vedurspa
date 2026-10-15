@@ -30,9 +30,6 @@ def upd(name,a,b):
     p=R/name;s=p.read_text()
     if s.count(a)!=1:raise AssertionError(f"{name} expected one stable anchor, found {s.count(a)}: {a[:100]}")
     p.write_text(s.replace(a,b,1))
-upd('src/App.tsx',
-' import { DeveloperPanel } from "./components/DeveloperPanel";',
-' import { DeveloperPanel } from "./components/DeveloperPanel";')
 # The import anchor is unique; other components remain untouched.
 upd('src/App.tsx','import { DeveloperPanel } from "./components/DeveloperPanel";',
  'import { DeveloperPanel } from "./components/DeveloperPanel";\nimport {readStationMapMode,writeStationMapMode,type StationMapMode} from "./utils/stationMapMode";')
