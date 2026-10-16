@@ -893,6 +893,15 @@ jobs:
           echo 'e9f3d40d0ec21e4384c86392d936205904c406bcc9beed77dffedc4802b5e5f1  /tmp/v1642.patch.br' | sha256sum -c -
           node -e "require('fs').writeFileSync('/tmp/v1642.patch',require('zlib').brotliDecompressSync(require('fs').readFileSync('/tmp/v1642.patch.br')))"
           patch --batch --fuzz=0 -p1 -d app < /tmp/v1642.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/ci/official_widget_focus.js')
+          s=p.read_text()
+          before='function hideHoldBubble(){clearInterval(holdTick);'
+          after="function hideHoldBubble(){if(typeof clearInterval==='function')clearInterval(holdTick);"
+          assert before in s
+          p.write_text(s.replace(before,after))
+          PY
           python3 app/ci/generate_official_map_focus.py
           python3 -m py_compile app/ci/patch_android.py
           node app/tests/v1642Variants.test.mjs
