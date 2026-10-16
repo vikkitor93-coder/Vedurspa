@@ -911,6 +911,14 @@ jobs:
           assert old in s
           p.write_text(s.replace(old,new))
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs'):
+              p=Path('app/tests')/name
+              s=p.read_text()
+              assert r'1\.6\.41' in s
+              p.write_text(s.replace(r'1\.6\.41',r'1\.6\.42'))
+          PY
           python3 app/ci/generate_official_map_focus.py
           python3 -m py_compile app/ci/patch_android.py
           node app/tests/v1642Variants.test.mjs
