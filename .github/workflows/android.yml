@@ -890,6 +890,22 @@ jobs:
         shell: bash
         run: bash ci-src/v1642/apply.sh
 
+      - name: Verify continuous map uses original Veðurstofa Íslands basemap
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('app/src/components/ContinuousStationMap.tsx').read_text()
+          assert 'https://geo.vedur.is/geoserver/www/imo_basemap_epsg3857' in s, 'Official weather map tile provider changed'
+          assert 'tile.openstreetmap.org' not in s, 'Unexpected third-party map source'
+          assert 'project(lat:number,lon:number,z:number)' in s
+          assert 'Staðaspár: vedur.is' in s
+          for name in ('app/ci/official_widget_auto_regions.js','app/AI_HANDOFF.md','app/tests/v1642MapExperiences.test.tsx'):
+              assert Path(name).is_file(),name
+          assert 'Slepptu til að skipta' in Path('app/ci/official_widget_auto_regions.js').read_text()
+          print('Verified official geo.vedur.is EPSG:3857 tiles, map variants and hold-release UI')
+          PY
+
       - name: Install dependencies
         working-directory: app
         run: npm install --no-audit --no-fund
@@ -999,6 +1015,7 @@ jobs:
           set -euo pipefail
           if gh release view v1.6.42 >/dev/null 2>&1; then
             gh release upload v1.6.42 app/Vedurspa-1.6.42.apk Vedurspa-PC-HTML-1.6.42.zip Vedurspa-1.6.42-complete-source.zip --clobber
+            gh release edit v1.6.42 --notes-file app/RELEASE_NOTES_1.6.42.md --title "Veðurspá 1.6.42 — Three Staðaspá map options (Official basemap)" --target "$GITHUB_SHA" --latest
           else
             gh release create v1.6.42 \
               app/Vedurspa-1.6.42.apk \
