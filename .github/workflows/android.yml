@@ -902,6 +902,15 @@ jobs:
           assert before in s
           p.write_text(s.replace(before,after))
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/components/OfficialStationMapFrame.tsx')
+          s=p.read_text()
+          old='void inline.setAutomaticRegionSwitch({enabled:active&&automaticRegionSwitch}).catch(()=>{});'
+          new='void inline.setAutomaticRegionSwitch?.({enabled:active&&automaticRegionSwitch})?.catch(()=>{});'
+          assert old in s
+          p.write_text(s.replace(old,new))
+          PY
           python3 app/ci/generate_official_map_focus.py
           python3 -m py_compile app/ci/patch_android.py
           node app/tests/v1642Variants.test.mjs
