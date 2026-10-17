@@ -36,6 +36,7 @@ console.log('Veðurspá 1.6.43 first-party continuous map tiles and 3-map regres
 for p in (R/'tests').glob('*'):
  if p.suffix not in ('.mjs','.ts','.tsx'):continue
  s=p.read_text().replace('1.6.42','1.6.43').replace('versionCode 49','versionCode 50')
+ s=s.replace(r'1\.6\.42',r'1\.6\.43')
  if p.name=='v1636UpdateBadge.test.ts':
   s=s.replace("isNewerRelease({version:'1.6.43'},'1.6.43'), true","isNewerRelease({version:'1.6.44'},'1.6.43'), true")
  p.write_text(s)
