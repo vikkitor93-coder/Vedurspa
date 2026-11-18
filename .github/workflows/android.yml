@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, ci-build-vedurspa-1.6.44-official-xyz-tiles]
+    branches: [main, ci-fix-vedur-2026-nov-site-migration]
   pull_request:
     branches: [main]
   workflow_dispatch:
