@@ -71,6 +71,11 @@ p=R/'tests/nativePlugins.test.mjs'
 s=p.read_text()
 s=s.replace(r'www\.vedur\.is',r'eldri\.vedur\.is')
 p.write_text(s)
+# Original map lifecycle test also checks the migrated source host.
+p=R/'tests/officialInlineMap.test.mjs'
+s0=p.read_text()
+s0=s0.replace(r'www\.vedur\.is',r'eldri\.vedur\.is')
+p.write_text(s0)
 (R/'RELEASE_NOTES_1.6.44.md').write_text('''# Veðurspá 1.6.44 — Provider migration repair
 
 Veðurstofa Íslands redesigned vedur.is on 17 November 2026. Existing original weather, cloud, aurora and station forecast pages moved to eldri.vedur.is. A live host probe on 18 November confirms that the old www URLs now return HTTP 404, while legacy pages still return the original map schemas and image data.
