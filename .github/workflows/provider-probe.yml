@@ -1,0 +1,14 @@
+name: Probe provider site migration
+on:
+  push:
+    branches: [ci-fix-vedur-2026-nov-site-migration]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check old and new forecast endpoints
+        run: python3 ci-src/v1644/probe.py
