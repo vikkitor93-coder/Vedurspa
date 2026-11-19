@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+echo 'd3e504b84bf72c19eac64dae5e62950e91996a6e5eea0cc7307c83f51ddc7af9  ci-src/v1645/new-look.tar.br' | sha256sum -c -
+node -e "require('node:fs').writeFileSync('/tmp/v1645-new-look.tar',require('node:zlib').brotliDecompressSync(require('node:fs').readFileSync('ci-src/v1645/new-look.tar.br')))"
 python3 - <<'PY'
 from pathlib import Path
-import hashlib, tarfile, brotli
-payload=Path('ci-src/v1645/new-look.tar.br').read_bytes()
-assert hashlib.sha256(payload).hexdigest()=='d3e504b84bf72c19eac64dae5e62950e91996a6e5eea0cc7307c83f51ddc7af9', 'new look overlay hash mismatch'
-Path('/tmp/v1645-new-look.tar').write_bytes(brotli.decompress(payload))
+import tarfile
 with tarfile.open('/tmp/v1645-new-look.tar') as archive:
     for member in archive.getmembers():
         assert not member.name.startswith('/') and '..' not in Path(member.name).parts
