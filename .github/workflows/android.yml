@@ -943,6 +943,16 @@ jobs:
           echo '9975a302bbf7aa9af5ae4361c315c4346b6de09a7766a83bef9160e4c75f747b  /tmp/v1646.patch.br' | sha256sum -c -
           node -e "const fs=require('node:fs'),zlib=require('node:zlib');fs.writeFileSync('/tmp/v1646.patch',zlib.brotliDecompressSync(fs.readFileSync('/tmp/v1646.patch.br')))"
           patch --batch --fuzz=0 -p1 -d app < /tmp/v1646.patch
+          # Two inherited updater tests contain escaped regex literals that
+          # intentionally must track the newly installed version.
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ('v1628UpdateSmoke.test.mjs','v1630SimpleUpdate.test.mjs'):
+              p=Path('app/tests')/name
+              s=p.read_text()
+              assert r'1\.6\.45' in s, name
+              p.write_text(s.replace(r'1\.6\.45',r'1\.6\.46'))
+          PY
           test "$(node -p "require('./app/package.json').version")" = '1.6.46'
           node app/tests/v1646WarningBasemap.test.mjs
           node app/tests/v1635HeaderWarning.test.mjs
